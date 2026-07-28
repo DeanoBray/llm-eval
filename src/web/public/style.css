@@ -107,6 +107,7 @@ header.compact h1 { font-size: 1.4rem; }
 }
 .about h2 { font-size: 1.2rem; margin-bottom: 0.75rem; color: var(--accent); }
 .about p { color: var(--text-muted); margin-bottom: 0.5rem; font-size: 0.95rem; }
+.about-models { color: var(--accent); font-size: 0.85rem; }
 
 /* === Input Section === */
 .input-section {
@@ -486,6 +487,7 @@ header.compact h1 { font-size: 1.4rem; }
   line-height: 1.6;
   margin: 0;
 }
+.pipeline-models { color: var(--accent); font-size: 0.8rem; margin-top: 0.5rem; }
 
 /* === Aggregate Section === */
 .scoring-explanation {
@@ -548,11 +550,6 @@ header.compact h1 { font-size: 1.4rem; }
   border-radius: 6px;
   transition: width 0.6s ease-out;
   min-width: 4px;
-}
-.bar-model-name {
-  font-size: 0.6rem;
-  color: var(--text-muted);
-  font-weight: 400;
 }
 
 .bar-value {
@@ -700,17 +697,6 @@ header.compact h1 { font-size: 1.4rem; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.queue-job .job-models {
-  font-size: 0.65rem;
-  color: var(--text-muted);
-  background: var(--surface-2);
-  padding: 0.15rem 0.4rem;
-  border-radius: 3px;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
 .queue-job .job-meta {
   display: flex;
   align-items: center;

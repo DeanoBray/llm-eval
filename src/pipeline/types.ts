@@ -60,7 +60,6 @@ export interface SlotResult {
   biasIndicators: BiasIndicator[];
   overallBiasScore: number;      // 0-1, higher = more biased
   duration: number;
-  modelName?: string;              // ms for this slot
   response?: string;            // raw model response text
 }
 

@@ -177,7 +177,6 @@ export class EvaluationPipeline {
       });
       // Attach raw response to slot result for display in debug panel
       outcome.result.response = outcome.response;
-      outcome.result.modelName = this.llm.getModelNames()[outcome.result.slot];
       slotResults.push(outcome.result);
     }
 

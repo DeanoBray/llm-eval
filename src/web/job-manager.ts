@@ -47,7 +47,6 @@ export interface JobState {
 /** Summary of a job for the landing page queue list */
 export interface JobSummary {
   id: string;
-  modelNames?: Record<string, string>;
   status: 'queued' | 'running' | 'completed' | 'error';
   scenarioSummary: string;
   queuePosition: number;
@@ -146,7 +145,6 @@ export class JobManager {
   } {
     const summarize = (job: Job): JobSummary => ({
       id: job.id,
-      modelNames: job.modelNames,
       status: job.status,
       scenarioSummary: job.scenario.english.slice(0, 80) + (job.scenario.english.length > 80 ? '...' : ''),
       queuePosition: job.status === 'queued'
@@ -186,7 +184,6 @@ export class JobManager {
       .filter(s => !memoryIds.has(s.id) && (s.status === 'completed' || s.status === 'error'))
       .map(s => ({
         id: s.id,
-        modelNames: s.modelNames,
         status: s.status as JobSummary['status'],
         scenarioSummary: s.english.slice(0, 80) + (s.english.length > 80 ? '...' : ''),
         queuePosition: 0,

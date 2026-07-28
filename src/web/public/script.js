@@ -25,6 +25,51 @@ const PHASES = [
 
 const ALL_SLOTS = ['us-model-en', 'us-model-zh', 'cn-model-en', 'cn-model-zh'];
 
+// === Model Configuration (loaded once, shared across all jobs) ===
+let modelConfig = null;
+
+async function loadModelConfig() {
+  try {
+    const res = await fetch('/api/config');
+    modelConfig = await res.json();
+    populateModelDescriptions();
+  } catch (err) {
+    console.error('Failed to load model config:', err);
+  }
+}
+
+function populateModelDescriptions() {
+  if (!modelConfig?.slots) return;
+
+  const usModel = modelConfig.slots.find(s => s.slot === 'us-model-en');
+  const cnModel = modelConfig.slots.find(s => s.slot === 'cn-model-en');
+  const judge = modelConfig.slots.find(s => s.slot === 'judge');
+
+  const usName = usModel ? truncateModelName(usModel.model) : 'US model';
+  const cnName = cnModel ? truncateModelName(cnModel.model) : 'CN model';
+  const judgeName = judge ? truncateModelName(judge.model) : 'Judge model';
+
+  // Landing page — About section
+  const aboutModels = document.getElementById('about-models');
+  if (aboutModels) {
+    aboutModels.textContent = `US responses use ${usName}; Chinese responses use ${cnName}. Fact verification uses ${judgeName}.`;
+  }
+
+  // Job page — pipeline description
+  const pipeModels = document.getElementById('pipeline-models');
+  if (pipeModels) {
+    pipeModels.textContent = `US model: ${usName} · CN model: ${cnName} · Fact-checker: ${judgeName}`;
+  }
+}
+
+function truncateModelName(name) {
+  // Strip quant suffixes and MLX marker for display
+  return name.split('-MLX')[0].split('-oQ')[0];
+}
+
+// Kick off config fetch early
+loadModelConfig();
+
 // === Mode Detection ===
 const pathMatch = location.pathname.match(/^\/job\/(\w+)$/);
 const isJobPage = !!pathMatch;
@@ -646,7 +691,7 @@ function showAggregateChartFromResults(slotResults) {
     const barWidth = Math.max(score * 100, 4);
     const barColor = score > 0.5 ? 'var(--red)' : score > 0.2 ? 'var(--yellow)' : 'var(--green)';
     svg += '<div class="bar-row">' +
-      '<div class="bar-label">' + FLAGS[item.slot] + ' ' + LABELS[item.slot] + '<br><span class="bar-model-name">' + (item.modelName || '').split('-')[0] + '</span></div>' +
+      '<div class="bar-label">' + FLAGS[item.slot] + ' ' + LABELS[item.slot] + '</div>' +
       '<div class="bar-track">' +
         '<div class="bar-fill" style="width:' + barWidth + '%;background:' + barColor + ';"></div>' +
         '<span class="bar-value">' + (score * 100).toFixed(0) + '%</span>' +
@@ -882,7 +927,6 @@ function renderJobRow(j) {
 
   return '<a href="/job/' + j.id + '" class="queue-job" onclick="event.preventDefault(); navigateToJob(\'' + j.id + '\');">' +
     '<span class="job-id">' + j.id + '</span>' +
-    (j.modelNames ? '<span class="job-models">' + [...new Set(Object.values(j.modelNames))].map(m => m.split('-MLX')[0]).join(', ') + '</span>' : '') +
     '<span class="job-scenario" title="' + escapeHtml(j.scenarioSummary) + '">' + escapeHtml(j.scenarioSummary) + '</span>' +
     '<span class="job-meta">' +
       '<span class="job-status ' + j.status + '">' + j.status + '</span>' +
