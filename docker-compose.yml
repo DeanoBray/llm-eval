@@ -2,10 +2,7 @@ services:
   llm-eval:
     build: .
     container_name: llm-eval
-    ports:
-      - "3007:3007"
+    network_mode: host
     env_file:
       - .env
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     restart: unless-stopped
