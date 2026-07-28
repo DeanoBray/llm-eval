@@ -107,7 +107,44 @@ header.compact h1 { font-size: 1.4rem; }
 }
 .about h2 { font-size: 1.2rem; margin-bottom: 0.75rem; color: var(--accent); }
 .about p { color: var(--text-muted); margin-bottom: 0.5rem; font-size: 0.95rem; }
-.about-models { color: var(--accent); font-size: 0.85rem; }
+.about-models {
+  color: var(--accent);
+  font-size: 0.85rem;
+}
+
+/* Model table */
+.model-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin: 12px 0;
+}
+.model-table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+  padding: 4px 12px 4px 0;
+  vertical-align: top;
+}
+.model-table td {
+  padding: 4px 0;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  word-break: break-all;
+  color: var(--text);
+}
+.model-table-compact {
+  font-size: 12px;
+  margin: 8px 0;
+}
+.model-table-compact th {
+  padding: 3px 8px 3px 0;
+}
+.model-table-compact td {
+  font-size: 11px;
+  padding: 3px 0;
+}
 
 /* === Input Section === */
 .input-section {

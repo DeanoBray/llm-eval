@@ -38,31 +38,48 @@ async function loadModelConfig() {
   }
 }
 
-function populateModelDescriptions() {
-  if (!modelConfig?.slots) return;
+function buildModelTable(compact) {
+  if (!modelConfig?.slots) return '';
 
-  const usModel = modelConfig.slots.find(s => s.slot === 'us-model-en');
-  const cnModel = modelConfig.slots.find(s => s.slot === 'cn-model-en');
+  const us = modelConfig.slots.find(s => s.slot === 'us-model-en');
+  const cn = modelConfig.slots.find(s => s.slot === 'cn-model-en');
   const judge = modelConfig.slots.find(s => s.slot === 'judge');
+  const tEnZh = modelConfig.translation?.enToChinese;
+  const tZhEn = modelConfig.translation?.chineseToEn;
 
-  const usName = usModel ? truncateModelName(usModel.model) : 'US model';
-  const cnName = cnModel ? truncateModelName(cnModel.model) : 'CN model';
-  const judgeName = judge ? truncateModelName(judge.model) : 'Judge model';
+  const cls = compact ? 'model-table model-table-compact' : 'model-table';
+  const rows = compact ? [
+    ['US Responses', us?.model],
+    ['CN Responses', cn?.model],
+    ['Fact‑checker', judge?.model],
+  ] : [
+    ['US Model (EN + ZH)', us?.model],
+    ['CN Model (EN + ZH)', cn?.model],
+    ['Fact‑checker (Judge)', judge?.model],
+    ['Translate EN → ZH', tEnZh || cn?.model],
+    ['Translate ZH → EN', tZhEn || us?.model],
+  ];
 
-  // Translation models (may differ from pipeline models)
-  const tEnZh = modelConfig.translation?.enToChinese ? truncateModelName(modelConfig.translation.enToChinese) : cnName;
-  const tZhEn = modelConfig.translation?.chineseToEn ? truncateModelName(modelConfig.translation.chineseToEn) : usName;
+  let html = `<table class="${cls}">`;
+  for (const [role, model] of rows) {
+    const display = model ? truncateModelName(model) : '—';
+    html += `<tr><th>${role}</th><td>${display}</td></tr>`;
+  }
+  html += '</table>';
+  return html;
+}
 
+function populateModelDescriptions() {
   // Landing page — About section
   const aboutModels = document.getElementById('about-models');
   if (aboutModels) {
-    aboutModels.textContent = `US responses use ${usName}; Chinese responses use ${cnName}. Fact verification uses ${judgeName}. Translation: en→zh uses ${tEnZh}, zh→en uses ${tZhEn}.`;
+    aboutModels.innerHTML = buildModelTable(false);
   }
 
   // Job page — pipeline description
   const pipeModels = document.getElementById('pipeline-models');
   if (pipeModels) {
-    pipeModels.textContent = `US model: ${usName} · CN model: ${cnName} · Fact-checker: ${judgeName} · Translation en→zh: ${tEnZh}, zh→en: ${tZhEn}`;
+    pipeModels.innerHTML = buildModelTable(true);
   }
 }
 
