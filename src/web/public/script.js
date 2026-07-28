@@ -128,6 +128,9 @@ function showLanding() {
   pipelineView.classList.remove('active');
   jobStatusBanner.style.display = 'none';
   aggregateSection.style.display = 'none';
+  // Reset run button in case it was left in "Submitting..." state
+  runBtn.disabled = false;
+  runBtn.textContent = 'Run Evaluation';
 }
 
 function showPipeline() {
@@ -496,7 +499,7 @@ function handleJobSync(sync) {
   if (sync.slotEvents) {
     Object.keys(sync.slotEvents).forEach(slot => {
       sync.slotEvents[slot].forEach(evt => {
-        replayPhaseState(slot, evt.step, evt.status, evt.message, evt.timestamp);
+        replayPhaseState(slot, evt.step, evt.status, evt.message, evt.timestamp, evt.elapsed);
       });
     });
   }
@@ -522,7 +525,7 @@ function handleJobSync(sync) {
   }
 }
 
-function replayPhaseState(slot, step, status, message, replayTimestamp) {
+function replayPhaseState(slot, step, status, message, replayTimestamp, elapsedMs) {
   const phaseIdx = PHASES.findIndex(p => p.id === step);
   if (phaseIdx === -1 && step !== 'done') return;
 
@@ -537,9 +540,10 @@ function replayPhaseState(slot, step, status, message, replayTimestamp) {
 
   if (status === 'done') {
     // Mark this and all previous phases as done
-    for (let i = 0; i <= phaseIdx; i++) {
+    for (let i = 0; i < phaseIdx; i++) {
       updatePhaseNode(slot, PHASES[i].id, 'done', replayTimestamp);
     }
+    updatePhaseNode(slot, PHASES[phaseIdx].id, 'done', replayTimestamp, elapsedMs);
     for (let i = 0; i < phaseIdx; i++) {
       updateArrow(slot, i, 'passed');
     }
@@ -550,7 +554,7 @@ function replayPhaseState(slot, step, status, message, replayTimestamp) {
       updatePhaseNode(slot, PHASES[i].id, 'done', replayTimestamp);
       updateArrow(slot, i, 'passed');
     }
-    updatePhaseNode(slot, step, 'running', replayTimestamp);
+    updatePhaseNode(slot, step, 'running', replayTimestamp, elapsedMs);
     if (phaseIdx > 0) updateArrow(slot, phaseIdx - 1, 'active');
 
     // Check for refusal short-circuit
@@ -559,7 +563,7 @@ function replayPhaseState(slot, step, status, message, replayTimestamp) {
       updatePhaseNode(slot, 'verifying-facts', 'skipped', replayTimestamp);
     }
   } else if (status === 'error') {
-    updatePhaseNode(slot, step, 'error', replayTimestamp);
+    updatePhaseNode(slot, step, 'error', replayTimestamp, elapsedMs);
   }
 }
 
@@ -590,7 +594,7 @@ function handleProgress(progress) {
 
   // Handle completion
   if (step === 'done' || (step === 'scoring-bias' && status === 'done' && progress.result)) {
-    updatePhaseNode(slot, 'scoring-bias', 'done');
+    updatePhaseNode(slot, 'scoring-bias', 'done', undefined, progress.elapsed);
     for (let i = 0; i < PHASES.length - 1; i++) updateArrow(slot, i, 'passed');
     if (progress.result) {
       displaySlotResult(slot, progress.result);
@@ -604,7 +608,7 @@ function handleProgress(progress) {
 
   // Update phase node
   if (status === 'running') {
-    updatePhaseNode(slot, step, 'running');
+    updatePhaseNode(slot, step, 'running', undefined, progress.elapsed);
     for (let i = 0; i < phaseIdx; i++) {
       updatePhaseNode(slot, PHASES[i].id, 'done');
       updateArrow(slot, i, 'passed');
@@ -618,7 +622,7 @@ function handleProgress(progress) {
       updateArrow(slot, phaseIdx - 1, 'passed');
     }
   } else if (status === 'done') {
-    updatePhaseNode(slot, step, 'done');
+    updatePhaseNode(slot, step, 'done', undefined, progress.elapsed);
     for (let i = 0; i <= phaseIdx; i++) {
       updatePhaseNode(slot, PHASES[i].id, 'done');
     }
@@ -633,7 +637,7 @@ function handleProgress(progress) {
       updatePhaseNode(slot, 'verifying-facts', 'skipped');
     }
   } else if (status === 'error') {
-    updatePhaseNode(slot, step, 'error');
+    updatePhaseNode(slot, step, 'error', undefined, progress.elapsed);
   }
 }
 
@@ -785,7 +789,7 @@ function buildFlowchart(slot) {
   phasesEl.innerHTML = html;
 }
 
-function updatePhaseNode(slot, phaseId, state, replayTimestamp) {
+function updatePhaseNode(slot, phaseId, state, replayTimestamp, elapsedMs) {
   const node = document.getElementById('node-' + slot + '-' + phaseId);
   if (!node) return;
   node.className = node.className.replace(/\s(pending|running|done|error|skipped)/g, '');
@@ -797,14 +801,20 @@ function updatePhaseNode(slot, phaseId, state, replayTimestamp) {
   else if (state === 'skipped') icon.textContent = '—';
   if (state !== 'pending') {
     const timeEl = document.getElementById('time-' + slot + '-' + phaseId);
-    if (timeEl && pipelineStartTime) {
+    if (timeEl) {
       if (!phaseTimestamps[slot]) phaseTimestamps[slot] = {};
       // Only set timestamp once — first transition away from pending
       if (!phaseTimestamps[slot][phaseId]) {
         phaseTimestamps[slot][phaseId] = replayTimestamp || Date.now();
+        phaseTimestamps[slot][phaseId + '-elapsed'] = elapsedMs;
       }
-      const phaseTs = phaseTimestamps[slot][phaseId];
-      timeEl.textContent = '+' + ((phaseTs - pipelineStartTime) / 1000).toFixed(3) + 's';
+      // Use pipeline-reported elapsed time if available, otherwise compute from timestamp
+      const storedElapsed = phaseTimestamps[slot][phaseId + '-elapsed'];
+      if (storedElapsed !== undefined) {
+        timeEl.textContent = '+' + (storedElapsed / 1000).toFixed(3) + 's';
+      } else if (pipelineStartTime) {
+        timeEl.textContent = '+' + ((phaseTimestamps[slot][phaseId] - pipelineStartTime) / 1000).toFixed(3) + 's';
+      }
       timeEl.style.opacity = '1';
     }
   }

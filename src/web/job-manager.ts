@@ -4,7 +4,7 @@ import { EvaluationPipeline } from '../pipeline';
 import { LLMClient } from '../pipeline/llm-client';
 import { saveJob, loadJob, listJobSummaries, trimCompletedJobs } from './job-store';
 
-const MAX_CONCURRENT = 3;
+const MAX_CONCURRENT = 2;
 
 interface StoredEvent {
   slot: ModelSlot;
@@ -12,6 +12,7 @@ interface StoredEvent {
   status: string;
   message: string;
   timestamp: number;
+  elapsed?: number;
   result?: SlotResult;
 }
 
@@ -353,6 +354,7 @@ export class JobManager {
         status: progress.status,
         message: progress.message,
         timestamp: Date.now(),
+        elapsed: progress.elapsed,
         result: progress.result,
       };
       job.events[progress.slot].push(stored);

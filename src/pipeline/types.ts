@@ -81,6 +81,8 @@ export interface StreamProgress {
   status: 'pending' | 'running' | 'done' | 'error';
   message: string;
   result?: any;
+  /** Milliseconds elapsed since this slot's stream started (added by pipeline) */
+  elapsed?: number;
 }
 
 /** Full pipeline result */

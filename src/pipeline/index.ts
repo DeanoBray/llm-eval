@@ -65,18 +65,20 @@ export class EvaluationPipeline {
     const streamPromises = ALL_SLOTS.map(async ({ slot, language, useZh }) => {
       const prompt = useZh ? scenario.chinese! : scenario.english;
 
+      const slotStart = Date.now();
+      const elapsed = () => Date.now() - slotStart;
+
       // Emit initial state — prompt is ready (already translated by frontend)
       onProgress?.({
         slot,
         step: 'translating',
         status: 'done',
         message: useZh ? 'Chinese prompt ready' : 'English prompt ready',
+        elapsed: elapsed(),
       });
 
-      const slotStart = Date.now();
-
       // Step 1: Query
-      onProgress?.({ slot, step: 'querying', status: 'running', message: 'Querying model...' });
+      onProgress?.({ slot, step: 'querying', status: 'running', message: 'Querying model...', elapsed: elapsed() });
       let response: string;
       try {
         response = await this.llm.query(slot, prompt);
@@ -86,6 +88,7 @@ export class EvaluationPipeline {
           step: 'querying',
           status: 'error',
           message: `Query failed: ${err.message}`,
+          elapsed: elapsed(),
         });
         const errorResult: SlotResult = {
           slot, refusal: { isRefusal: true, confidence: 1, reason: `Query error: ${err.message}` },
@@ -94,10 +97,10 @@ export class EvaluationPipeline {
         };
         return { response: '', result: errorResult };
       }
-      onProgress?.({ slot, step: 'querying', status: 'done', message: 'Response received' });
+      onProgress?.({ slot, step: 'querying', status: 'done', message: 'Response received', elapsed: elapsed() });
 
       // Step 2: Detect refusal
-      onProgress?.({ slot, step: 'detecting-refusal', status: 'running', message: 'Checking for refusal...' });
+      onProgress?.({ slot, step: 'detecting-refusal', status: 'running', message: 'Checking for refusal...', elapsed: elapsed() });
       const refusal = this.refusalDetector.detect(response, language);
       if (refusal.isRefusal) {
         onProgress?.({
@@ -105,6 +108,7 @@ export class EvaluationPipeline {
           step: 'detecting-refusal',
           status: 'done',
           message: `Refusal detected (${(refusal.confidence * 100).toFixed(0)}% confidence)`,
+          elapsed: elapsed(),
         });
         // Short-circuit: skip fact extraction and verification
         const refusalResult = this.aggregator.analyze({
@@ -117,41 +121,42 @@ export class EvaluationPipeline {
           slot, step: 'done', status: 'done',
           message: `Completed — bias score: ${(refusalResult.overallBiasScore * 100).toFixed(0)}%`,
           result: refusalResult,
+          elapsed: elapsed(),
         });
         return { response, result: refusalResult };
       }
-      onProgress?.({ slot, step: 'detecting-refusal', status: 'done', message: 'No refusal — proceeding' });
+      onProgress?.({ slot, step: 'detecting-refusal', status: 'done', message: 'No refusal — proceeding', elapsed: elapsed() });
 
       // Step 3: Extract facts
-      onProgress?.({ slot, step: 'extracting-facts', status: 'running', message: 'Extracting atomic facts...' });
+      onProgress?.({ slot, step: 'extracting-facts', status: 'running', message: 'Extracting atomic facts...', elapsed: elapsed() });
       let facts: Fact[] = [];
       try {
         facts = await this.factExtractor.extract(response, slot);
       } catch (err: any) {
-        onProgress?.({ slot, step: 'extracting-facts', status: 'error', message: `Extraction failed: ${err.message}` });
+        onProgress?.({ slot, step: 'extracting-facts', status: 'error', message: `Extraction failed: ${err.message}`, elapsed: elapsed() });
         facts = [];
       }
-      onProgress?.({ slot, step: 'extracting-facts', status: 'done', message: `${facts.length} facts extracted` });
+      onProgress?.({ slot, step: 'extracting-facts', status: 'done', message: `${facts.length} facts extracted`, elapsed: elapsed() });
 
       // Step 4: Verify facts
       let verifications = null;
       if (facts.length > 0) {
-        onProgress?.({ slot, step: 'verifying-facts', status: 'running', message: 'Verifying facts...' });
+        onProgress?.({ slot, step: 'verifying-facts', status: 'running', message: 'Verifying facts...', elapsed: elapsed() });
         try {
           verifications = await this.factVerifier.verifyBatch(facts);
         } catch (err: any) {
-          onProgress?.({ slot, step: 'verifying-facts', status: 'error', message: `Verification failed: ${err.message}` });
+          onProgress?.({ slot, step: 'verifying-facts', status: 'error', message: `Verification failed: ${err.message}`, elapsed: elapsed() });
         }
         if (verifications) {
           const accurate = verifications.filter(v => v.accurate).length;
-          onProgress?.({ slot, step: 'verifying-facts', status: 'done', message: `${accurate}/${verifications.length} accurate` });
+          onProgress?.({ slot, step: 'verifying-facts', status: 'done', message: `${accurate}/${verifications.length} accurate`, elapsed: elapsed() });
         }
       } else {
-        onProgress?.({ slot, step: 'verifying-facts', status: 'done', message: 'No facts to verify' });
+        onProgress?.({ slot, step: 'verifying-facts', status: 'done', message: 'No facts to verify', elapsed: elapsed() });
       }
 
       // Step 5: Score bias
-      onProgress?.({ slot, step: 'scoring-bias', status: 'running', message: 'Computing bias score...' });
+      onProgress?.({ slot, step: 'scoring-bias', status: 'running', message: 'Computing bias score...', elapsed: elapsed() });
       const slotResult = this.aggregator.analyze({
         slot, refusal, facts, factVerifications: verifications,
         biasIndicators: [], overallBiasScore: 0,
@@ -162,6 +167,7 @@ export class EvaluationPipeline {
         slot, step: 'done', status: 'done',
         message: `Completed — bias score: ${(slotResult.overallBiasScore * 100).toFixed(0)}%`,
         result: slotResult,
+        elapsed: elapsed(),
       });
 
       return { response, result: slotResult };

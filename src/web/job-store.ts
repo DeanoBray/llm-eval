@@ -19,6 +19,7 @@ export interface StoredJob {
     status: string;
     message: string;
     timestamp: number;
+    elapsed?: number;
     result?: unknown;
   }>>;
   slotResults: SlotResult[];
