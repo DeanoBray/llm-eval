@@ -17,7 +17,7 @@ export interface LLMConfig {
 /** Default config using oMLX on Mímir (tunneled via AU server) */
 export function defaultConfig(): LLMConfig {
   const baseURL = process.env.OMLX_URL || 'http://localhost:21434';
-  const apiKey = process.env.OMLX_API_KEY || 'lmm-api-key';
+  const apiKey = process.env.OMLX_API_KEY;
 
   // CN model: Qwen 3.6 35B — Chinese origin, strong performer
   const cnModel = process.env.CN_MODEL || 'Qwen3.6-35B-A3B-Uncensored-Heretic-MLX-8bit';

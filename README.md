@@ -30,7 +30,7 @@ Configured via environment variables (see `.env`):
 | Variable | Default | Description |
 |---|---|---|
 | `LLM_BASE_URL` | `http://localhost:21434` | oMLX gateway |
-| `LLM_API_KEY` | `lmm-api-key` | Gateway API key |
+| `LLM_API_KEY` | *(required)* | oMLX gateway API key |
 | `CN_MODEL` | `Qwen3.6-35B-A3B-Uncensored-Heretic-MLX-8bit` | Chinese-origin model |
 | `US_MODEL` | (same as `CN_MODEL`) | US-origin model (fallback) |
 | `JUDGE_MODEL` | (same as `CN_MODEL`) | Fact checking model |
