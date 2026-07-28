@@ -405,10 +405,10 @@ header.compact h1 { font-size: 1.4rem; }
 }
 
 .slot-result-card {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.75rem 1.5rem;
   align-items: center;
-  gap: 1.5rem;
-  flex-wrap: wrap;
 }
 
 .bias-score {
@@ -458,7 +458,7 @@ header.compact h1 { font-size: 1.4rem; }
 }
 
 .slot-indicators {
-  margin-left: auto;
+  justify-self: end;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -837,8 +837,8 @@ header.compact h1 { font-size: 1.4rem; }
 @media (max-width: 900px) {
   .stream-flowchart { flex-wrap: wrap; }
   .flow-phases { flex-wrap: wrap; }
-  .slot-result-card { flex-direction: column; align-items: flex-start; }
-  .slot-indicators { margin-left: 0; }
+  .slot-result-card { grid-template-columns: 1fr; gap: 0.5rem; }
+  .slot-indicators { justify-self: start; }
   .bar-label { width: 100px; }
   #app { padding: 1rem; }
 
@@ -847,8 +847,8 @@ header.compact h1 { font-size: 1.4rem; }
 
 /* Model response toggle */
 .slot-response {
+  grid-column: 1 / -1;
   margin-top: 0.5rem;
-  flex-basis: 100%;
 }
 .response-toggle {
   background: var(--surface2);
