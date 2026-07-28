@@ -36,6 +36,7 @@ export interface JobState {
   scenario: Scenario;
   queuePosition: number;
   slotResults: SlotResult[];
+  events: Record<string, StoredEvent[]>;
   createdAt: number;
   startedAt?: number;
   completedAt?: number;
@@ -214,6 +215,7 @@ export class JobManager {
         scenario: job.scenario,
         queuePosition,
         slotResults: job.slotResults,
+        events: job.events,
         createdAt: job.createdAt,
         startedAt: job.startedAt,
         completedAt: job.completedAt,
@@ -231,6 +233,7 @@ export class JobManager {
       scenario: stored.scenario,
       queuePosition: 0,
       slotResults: stored.slotResults as SlotResult[],
+      events: stored.events as Record<string, StoredEvent[]>,
       createdAt: stored.createdAt,
       startedAt: stored.startedAt,
       completedAt: stored.completedAt,

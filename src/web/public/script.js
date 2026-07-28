@@ -174,6 +174,24 @@ async function loadJob(jobId) {
     }
 
     if (state.status === 'running' || state.status === 'completed') {
+      // Restore events (debug panels + flowcharts)
+      if (state.events) {
+        Object.keys(state.events).forEach(slot => {
+          if (!slotEvents[slot]) slotEvents[slot] = [];
+          state.events[slot].forEach(evt => {
+            slotEvents[slot].push({
+              elapsed: '—',
+              step: evt.step,
+              status: evt.status,
+              message: evt.message,
+              ts: evt.timestamp,
+            });
+            replayPhaseState(slot, evt.step, evt.status, evt.message);
+          });
+          renderDebugPanel(slot);
+        });
+      }
+
       // Restore any completed slot results
       if (state.slotResults && state.slotResults.length > 0) {
         state.slotResults.forEach(sr => {
