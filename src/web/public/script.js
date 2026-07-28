@@ -727,6 +727,11 @@ function displaySlotResult(slot, result) {
       html += '<div class="response-label">Translation (' + transLang + ')</div>';
       html += '<pre class="response-text-block">' + escapeHtml(result.translatedResponse) + '</pre>';
       html += '</div>';
+    } else if (result.translationError) {
+      html += '<div class="response-translation response-translation-error">';
+      html += '<div class="response-label">Translation (' + transLang + ') — <span class="translation-error">failed</span></div>';
+      html += '<pre class="response-text-block error">' + escapeHtml(result.translationError) + '</pre>';
+      html += '</div>';
     }
     html += '</div>';
     html += '</div>';

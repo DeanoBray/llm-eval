@@ -62,6 +62,7 @@ export interface SlotResult {
   duration: number;
   response?: string;            // raw model response text
   translatedResponse?: string;  // translation (EN→ZH or ZH→EN)
+  translationError?: string;    // non-empty if translation failed
 }
 
 /** Per-stream pipeline step */

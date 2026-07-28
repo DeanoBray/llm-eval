@@ -189,6 +189,7 @@ export class EvaluationPipeline {
         }
         return `${slot}: translated (${outcome.result.translatedResponse!.length} chars)`;
       } catch (err: any) {
+        outcome.result.translationError = err.message || String(err);
         console.error(`[pipeline] Translation failed for ${slot}:`, err.message);
         return `${slot}: FAILED (${err.message})`;
       }

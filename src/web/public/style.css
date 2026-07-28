@@ -883,6 +883,15 @@ header.compact h1 { font-size: 1.4rem; }
   margin-top: 0;
 }
 
+.translation-error {
+  color: var(--error, #e05555);
+  font-weight: 500;
+}
+.response-text-block.error {
+  color: var(--error, #e05555);
+  border-left: 2px solid var(--error, #e05555);
+  background: rgba(224, 85, 85, 0.05);
+}
 .response-text-block {
   padding: 0.6rem 0.75rem;
   background: var(--surface2);
