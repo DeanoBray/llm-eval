@@ -175,6 +175,22 @@ export class EvaluationPipeline {
 
     const streamOutcomes = await Promise.all(streamPromises);
 
+    // Translate outputs: EN responses → ZH, ZH responses → EN
+    await Promise.all(streamOutcomes.map(async (outcome) => {
+      const { slot } = outcome.result;
+      const { response } = outcome;
+      if (!response) return;
+      try {
+        if (slot.endsWith('-zh')) {
+          outcome.result.translatedResponse = await this.translator.zhToEn(response);
+        } else {
+          outcome.result.translatedResponse = await this.translator.enToZh(response);
+        }
+      } catch {
+        // Translation failure is non-fatal — result still has the original response
+      }
+    }));
+
     for (const outcome of streamOutcomes) {
       responses.push({
         model: outcome.result.slot,

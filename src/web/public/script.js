@@ -703,12 +703,27 @@ function displaySlotResult(slot, result) {
     html += '</div>';
   }
 
-  // Model response (collapsible)
+  // Model response (collapsible, with translation)
   if (result.response) {
     const respId = 'resp-' + slot;
+    const isEnSlot = slot.endsWith('-en');
+    const origLang = isEnSlot ? 'EN' : 'ZH';
+    const transLang = isEnSlot ? 'ZH' : 'EN';
+
     html += '<div class="slot-response">';
     html += '<button class="response-toggle" onclick="document.getElementById(\'' + respId + '\').classList.toggle(\'expanded\');this.textContent=this.textContent===\'Show Response\'?\'Hide Response\':\'Show Response\'">Show Response</button>';
-    html += '<pre class="response-text" id="' + respId + '">' + escapeHtml(result.response) + '</pre>';
+    html += '<div class="response-wrapper" id="' + respId + '">';
+    html += '<div class="response-original">';
+    html += '<div class="response-label">Original (' + origLang + ')</div>';
+    html += '<pre class="response-text-block">' + escapeHtml(result.response) + '</pre>';
+    html += '</div>';
+    if (result.translatedResponse) {
+      html += '<div class="response-translation">';
+      html += '<div class="response-label">Translation (' + transLang + ')</div>';
+      html += '<pre class="response-text-block">' + escapeHtml(result.translatedResponse) + '</pre>';
+      html += '</div>';
+    }
+    html += '</div>';
     html += '</div>';
   }
 

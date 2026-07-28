@@ -61,6 +61,7 @@ export interface SlotResult {
   overallBiasScore: number;      // 0-1, higher = more biased
   duration: number;
   response?: string;            // raw model response text
+  translatedResponse?: string;  // translation (EN→ZH or ZH→EN)
 }
 
 /** Per-stream pipeline step */

@@ -848,6 +848,7 @@ header.compact h1 { font-size: 1.4rem; }
 /* Model response toggle */
 .slot-response {
   margin-top: 0.5rem;
+  flex-basis: 100%;
 }
 .response-toggle {
   background: var(--surface2);
@@ -861,9 +862,28 @@ header.compact h1 { font-size: 1.4rem; }
 .response-toggle:hover {
   background: var(--border);
 }
-.response-text {
+.response-wrapper {
   display: none;
   margin-top: 0.4rem;
+}
+.response-wrapper.expanded {
+  display: block;
+}
+
+.response-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-top: 0.5rem;
+  margin-bottom: 0.2rem;
+}
+.response-original .response-label {
+  margin-top: 0;
+}
+
+.response-text-block {
   padding: 0.6rem 0.75rem;
   background: var(--surface2);
   border-radius: 4px;
@@ -874,9 +894,7 @@ header.compact h1 { font-size: 1.4rem; }
   max-height: 200px;
   overflow-y: auto;
   color: var(--text);
-}
-.response-text.expanded {
-  display: block;
+  margin: 0;
 }
   .scenario-display { flex-direction: column; }
 }
