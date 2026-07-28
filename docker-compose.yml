@@ -1,0 +1,9 @@
+services:
+  llm-eval:
+    build: .
+    container_name: llm-eval
+    ports:
+      - "3007:3007"
+    env_file:
+      - .env
+    restart: unless-stopped

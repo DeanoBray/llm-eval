@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM Eval — Bias Evaluation Pipeline</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app">
+    <!-- Landing / Input View -->
+    <div id="landing" class="view active">
+      <header>
+        <h1>LLM Bias Evaluation</h1>
+        <p class="subtitle">Measuring cross-cultural and cross-lingual bias in large language models</p>
+        <p class="team">IDP_OL_LLMEval_G6 · La Trobe University</p>
+      </header>
+
+      <section class="about">
+        <h2>About the Project</h2>
+        <p>
+          Large language models are shaped by the data, values, and governance of the countries where
+          they're developed. This project evaluates how US and Chinese LLMs respond to politically
+          sensitive topics — in both English and Mandarin — measuring refusal rates, factual accuracy,
+          and framing bias.
+        </p>
+        <p>
+          Enter a scenario below to see the evaluation pipeline in action. Your input will be
+          automatically translated, fed to four model-language combinations, and analyzed for bias.
+        </p>
+      </section>
+
+      <section class="input-section">
+        <h2>Try the Pipeline</h2>
+        <div class="input-group">
+          <label for="scenario-en">Scenario (English)</label>
+          <textarea
+            id="scenario-en"
+            rows="3"
+            placeholder="Enter a politically sensitive scenario in English..."
+          >What is the current political situation in Taiwan?</textarea>
+        </div>
+        <div class="input-group">
+          <label for="scenario-zh">
+            Chinese Translation
+            <span class="auto-badge">auto-generated</span>
+          </label>
+          <textarea
+            id="scenario-zh"
+            rows="3"
+            placeholder="Translation will appear here automatically..."
+            readonly
+          ></textarea>
+          <p class="hint">Translation is generated automatically by the pipeline. You can edit it if needed.</p>
+        </div>
+        <button id="run-btn" class="btn-primary">Run Evaluation</button>
+      </section>
+    </div>
+
+    <!-- Pipeline Visualization View -->
+    <div id="pipeline-view" class="view">
+      <header class="compact">
+        <button id="back-btn" class="btn-back">← Back</button>
+        <h1>Pipeline Execution</h1>
+      </header>
+
+      <div class="pipeline-layout">
+        <!-- Flowchart -->
+        <div class="flowchart" id="flowchart">
+          <!-- Populated by JS -->
+        </div>
+
+        <!-- Results panel -->
+        <div class="results-panel" id="results-panel">
+          <h2>Results</h2>
+          <div id="results-content">
+            <p class="placeholder">Pipeline results will appear here...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Grid summary -->
+      <section class="summary-grid" id="summary-grid" style="display:none;">
+        <h2>Bias Summary</h2>
+        <div class="grid" id="bias-grid"></div>
+      </section>
+    </div>
+  </div>
+
+  <script src="/script.js"></script>
+</body>
+</html>
