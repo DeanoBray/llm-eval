@@ -14,6 +14,11 @@ let slotEvents = {};
 // Debug panel visibility state
 let debugVisible = {};
 
+// Reconnection state
+let reconnectAttempts = 0;
+const MAX_RECONNECT = 3;
+let pendingPipeline = null; // { english, chinese } if reconnecting mid-pipeline
+
 // === Phase definitions ===
 const PHASES = [
   { id: 'translating', label: 'Prompt' },
@@ -93,17 +98,53 @@ function connectWebSocket() {
   const wsUrl = protocol + '//' + location.host;
   ws = new WebSocket(wsUrl);
 
-  ws.onopen = () => console.log('WebSocket connected');
+  ws.onopen = () => {
+    console.log('WebSocket connected');
+    reconnectAttempts = 0;
+
+    // If we reconnected mid-pipeline, re-send the run command
+    if (pendingPipeline && ws.readyState === WebSocket.OPEN) {
+      ALL_SLOTS.forEach(slot => {
+        addDebugEntry(slot, 'connection', 'running', 'Reconnected — resubmitting pipeline');
+      });
+      ws.send(JSON.stringify({
+        type: 'run-pipeline',
+        english: pendingPipeline.english,
+        chinese: pendingPipeline.chinese,
+      }));
+      pendingPipeline = null;
+    }
+  };
+
   ws.onclose = () => {
     ws = null;
     if (isRunning) {
-      // Connection dropped while running — mark all slots
       ALL_SLOTS.forEach(slot => {
-        addDebugEntry(slot, 'connection', 'error', 'WebSocket disconnected');
+        addDebugEntry(slot, 'connection', 'error', 'WebSocket disconnected — attempting reconnect...');
       });
+
+      // Try to reconnect
+      if (reconnectAttempts < MAX_RECONNECT) {
+        reconnectAttempts++;
+        const delay = reconnectAttempts * 2000;
+        setTimeout(() => {
+          ALL_SLOTS.forEach(slot => {
+            addDebugEntry(slot, 'connection', 'running', `Reconnect attempt ${reconnectAttempts}/${MAX_RECONNECT}...`);
+          });
+          connectWebSocket();
+        }, delay);
+      } else {
+        ALL_SLOTS.forEach(slot => {
+          addDebugEntry(slot, 'connection', 'error', 'Max reconnection attempts reached — giving up');
+        });
+        isRunning = false;
+        runBtn.disabled = false;
+        pendingPipeline = null;
+      }
+    } else {
+      isRunning = false;
+      runBtn.disabled = false;
     }
-    isRunning = false;
-    runBtn.disabled = false;
   };
 
   ws.onmessage = (event) => {
@@ -487,6 +528,9 @@ runBtn.addEventListener('click', () => {
 
   setupAllFlowcharts();
   startTimer();
+
+  // Store for potential reconnection
+  pendingPipeline = { english, chinese };
 
   // Log start
   ALL_SLOTS.forEach(slot => {

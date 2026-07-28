@@ -65,6 +65,17 @@ app.post('/api/translate', async (req, res) => {
 wss.on('connection', (ws: WebSocket) => {
   console.log('WebSocket client connected');
 
+  // Ping/pong keepalive — prevents nginx/proxy timeout during long operations
+  const pingInterval = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.ping();
+    }
+  }, 30000); // every 30 seconds
+
+  ws.on('pong', () => {
+    // Client responded — connection is alive, nothing to do
+  });
+
   ws.on('message', async (data) => {
     try {
       const msg = JSON.parse(data.toString());
@@ -107,7 +118,9 @@ wss.on('connection', (ws: WebSocket) => {
         });
 
         // Send final aggregated result
-        ws.send(JSON.stringify({ type: 'result', result }));
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'result', result }));
+        }
       }
     } catch (err: any) {
       console.error('Pipeline error:', err);
@@ -121,7 +134,13 @@ wss.on('connection', (ws: WebSocket) => {
   });
 
   ws.on('close', () => {
+    clearInterval(pingInterval);
     console.log('WebSocket client disconnected');
+  });
+
+  ws.on('error', (err) => {
+    clearInterval(pingInterval);
+    console.error('WebSocket error:', err.message);
   });
 });
 
