@@ -49,16 +49,20 @@ function populateModelDescriptions() {
   const cnName = cnModel ? truncateModelName(cnModel.model) : 'CN model';
   const judgeName = judge ? truncateModelName(judge.model) : 'Judge model';
 
+  // Translation models (may differ from pipeline models)
+  const tEnZh = modelConfig.translation?.enToChinese ? truncateModelName(modelConfig.translation.enToChinese) : cnName;
+  const tZhEn = modelConfig.translation?.chineseToEn ? truncateModelName(modelConfig.translation.chineseToEn) : usName;
+
   // Landing page — About section
   const aboutModels = document.getElementById('about-models');
   if (aboutModels) {
-    aboutModels.textContent = `US responses use ${usName}; Chinese responses use ${cnName}. Fact verification uses ${judgeName}.`;
+    aboutModels.textContent = `US responses use ${usName}; Chinese responses use ${cnName}. Fact verification uses ${judgeName}. Translation: en→zh uses ${tEnZh}, zh→en uses ${tZhEn}.`;
   }
 
   // Job page — pipeline description
   const pipeModels = document.getElementById('pipeline-models');
   if (pipeModels) {
-    pipeModels.textContent = `US model: ${usName} · CN model: ${cnName} · Fact-checker: ${judgeName}`;
+    pipeModels.textContent = `US model: ${usName} · CN model: ${cnName} · Fact-checker: ${judgeName} · Translation en→zh: ${tEnZh}, zh→en: ${tZhEn}`;
   }
 }
 
@@ -85,6 +89,9 @@ const backBtn = document.getElementById('back-btn');
 const enInput = document.getElementById('scenario-en');
 const zhInput = document.getElementById('scenario-zh');
 const translationHint = document.getElementById('translation-hint');
+const labelEn = document.getElementById('label-en');
+const labelZh = document.getElementById('label-zh');
+const autoBadge = document.getElementById('auto-badge');
 const jobStatusBanner = document.getElementById('job-status-banner');
 
 // === Landing Page ===
@@ -128,11 +135,23 @@ async function translateText(text) {
   if (!text || text.trim().length === 0) {
     zhInput.value = '';
     translationHint.textContent = '';
+    // Reset labels to defaults
+    if (labelEn) labelEn.textContent = 'Input (English)';
+    if (labelZh) {
+      labelZh.childNodes[0].textContent = 'Translation (Chinese) ';
+      if (autoBadge) autoBadge.textContent = 'auto';
+    }
     runBtn.disabled = false;
     return;
   }
   // Detect if user typed Chinese — reverse the translation direction
   if (CHINESE_REGEX.test(text)) {
+    // Swap labels: top is Chinese input, bottom is English translation
+    if (labelEn) labelEn.textContent = 'English Translation';
+    if (labelZh) {
+      labelZh.childNodes[0].textContent = 'Input (Chinese) ';
+      if (autoBadge) autoBadge.textContent = 'translated from Chinese';
+    }
     translationHint.textContent = 'Translating Chinese → English...';
     runBtn.disabled = true;
     try {
@@ -159,6 +178,12 @@ async function translateText(text) {
     return;
   }
   // Normal flow: English → Chinese
+  // Reset labels to defaults
+  if (labelEn) labelEn.textContent = 'Input (English)';
+  if (labelZh) {
+    labelZh.childNodes[0].textContent = 'Translation (Chinese) ';
+    if (autoBadge) autoBadge.textContent = 'auto';
+  }
   translationHint.textContent = 'Translating...';
   runBtn.disabled = true;
   try {
@@ -195,7 +220,7 @@ runBtn.addEventListener('click', async () => {
   }
 
   runBtn.disabled = true;
-  runBtn.textContent = 'Creating...';
+  runBtn.textContent = 'Submitting...';
 
   try {
     const response = await fetch('/api/jobs', {

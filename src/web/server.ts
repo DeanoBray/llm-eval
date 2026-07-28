@@ -44,7 +44,11 @@ app.get('/api/config', (_req, res) => {
     slot,
     model: llmConfig.backends[slot as keyof typeof llmConfig.backends].model,
   }));
-  res.json({ slots, mockMode: llmConfig.mockMode });
+  const translation = {
+    enToChinese: llmConfig.backends['cn-model-zh'].model,
+    chineseToEn: llmConfig.backends['us-model-en'].model,
+  };
+  res.json({ slots, translation, mockMode: llmConfig.mockMode });
 });
 
 // Bidirectional translation endpoint
