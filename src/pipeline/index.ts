@@ -168,6 +168,8 @@ export class EvaluationPipeline {
         language: outcome.result.slot.endsWith('-zh') ? 'zh' : 'en',
         response: outcome.response,
       });
+      // Attach raw response to slot result for display in debug panel
+      outcome.result.response = outcome.response;
       slotResults.push(outcome.result);
     }
 
