@@ -108,6 +108,10 @@ export class JobManager {
     return this.pipeline.translateToChinese(text);
   }
 
+  async translateToEnglish(text: string): Promise<string> {
+    return this.pipeline.translateToEnglish(text);
+  }
+
   /** Create a new job and enqueue it. Returns the job ID. */
   createJob(scenario: Scenario): string {
     const id = `j${this.nextJobId++}`;

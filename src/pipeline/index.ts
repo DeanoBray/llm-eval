@@ -45,6 +45,11 @@ export class EvaluationPipeline {
     return this.translator.enToZh(text);
   }
 
+  /** Standalone Chinese→English translation (for when user types in Chinese) */
+  async translateToEnglish(text: string): Promise<string> {
+    return this.translator.zhToEn(text);
+  }
+
   /**
    * Run all 4 slots in parallel.
    * Scenario must already have both english and chinese set

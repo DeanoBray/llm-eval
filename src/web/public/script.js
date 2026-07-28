@@ -68,12 +68,16 @@ function showPipeline() {
 
 // Translation debounce
 let translationTimer = null;
+let suppressTranslation = false; // set when programmatically updating enInput
 enInput.addEventListener('input', () => {
+  if (suppressTranslation) return;
   if (translationTimer) clearTimeout(translationTimer);
   translationTimer = setTimeout(() => {
     translateText(enInput.value.trim());
   }, 800);
 });
+
+const CHINESE_REGEX = /[\u4e00-\u9fff]/;
 
 async function translateText(text) {
   if (!text || text.trim().length === 0) {
@@ -82,12 +86,34 @@ async function translateText(text) {
     runBtn.disabled = false;
     return;
   }
-  const CHINESE_REGEX = /[\u4e00-\u9fff]/;
+  // Detect if user typed Chinese — reverse the translation direction
   if (CHINESE_REGEX.test(text)) {
-    translationHint.textContent = 'Text appears to contain Chinese characters — edit the translation as needed';
+    translationHint.textContent = 'Translating Chinese → English...';
+    runBtn.disabled = true;
+    try {
+      const response = await fetch('/api/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, direction: 'zh->en' }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        // Put original Chinese in the Chinese field, translation in English field
+        zhInput.value = text;
+        suppressTranslation = true;
+        enInput.value = data.translation;
+        suppressTranslation = false;
+        translationHint.textContent = 'Chinese detected — translated to English. Verify and edit below';
+      } else {
+        translationHint.textContent = 'Translation unavailable (will translate during pipeline)';
+      }
+    } catch (err) {
+      translationHint.textContent = 'Translation unavailable — will translate during pipeline';
+    }
     runBtn.disabled = false;
     return;
   }
+  // Normal flow: English → Chinese
   translationHint.textContent = 'Translating...';
   runBtn.disabled = true;
   try {

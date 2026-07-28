@@ -47,16 +47,20 @@ app.get('/api/config', (_req, res) => {
   res.json({ slots, mockMode: llmConfig.mockMode });
 });
 
-// Standalone translation endpoint (EN → ZH)
+// Bidirectional translation endpoint
 app.post('/api/translate', async (req, res) => {
   try {
-    const { text } = req.body;
+    const { text, direction } = req.body;
     if (!text || typeof text !== 'string' || text.trim().length === 0) {
       res.status(400).json({ error: 'text is required' });
       return;
     }
-    // Use the internal pipeline of the JobManager for translation
-    const translation = await jobManager.translateToChinese(text.trim());
+    let translation: string;
+    if (direction === 'zh->en') {
+      translation = await jobManager.translateToEnglish(text.trim());
+    } else {
+      translation = await jobManager.translateToChinese(text.trim());
+    }
     res.json({ translation });
   } catch (err: any) {
     console.error('Translation error:', err);
