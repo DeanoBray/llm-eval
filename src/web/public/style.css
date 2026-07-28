@@ -47,7 +47,8 @@ header.compact {
   gap: 1rem;
   text-align: left;
   padding: 1rem 0;
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
+  padding-bottom: 2rem;
 }
 header h1 {
   font-size: 2rem;
@@ -102,6 +103,7 @@ header.compact h1 { font-size: 1.4rem; }
   border-radius: var(--radius);
   padding: 1.5rem;
   margin-bottom: 2rem;
+  padding-bottom: 2rem;
 }
 .about h2 { font-size: 1.2rem; margin-bottom: 0.75rem; color: var(--accent); }
 .about p { color: var(--text-muted); margin-bottom: 0.5rem; font-size: 0.95rem; }
@@ -154,6 +156,7 @@ header.compact h1 { font-size: 1.4rem; }
   flex-direction: column;
   gap: 0.75rem;
   margin-bottom: 2rem;
+  padding-bottom: 2rem;
 }
 
 .stream-row {
@@ -442,12 +445,64 @@ header.compact h1 { font-size: 1.4rem; }
 .indicator-sev.medium { background: rgba(234,179,8,0.15); color: var(--yellow); }
 .indicator-sev.high { background: rgba(239,68,68,0.15); color: var(--red); }
 
+/* === Loading Indicator === */
+.pipeline-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  color: var(--text-muted);
+  gap: 1rem;
+}
+.pipeline-loading p {
+  font-size: 0.9rem;
+}
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* === Pipeline Description === */
+.pipeline-description {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  margin-bottom: 2rem;
+  padding-bottom: 2rem;
+  animation: fadeIn 0.4s;
+}
+.pipeline-description p {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0;
+}
+
 /* === Aggregate Section === */
+.scoring-explanation {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0 0 1.25rem 0;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
 .aggregate-section {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 1.5rem;
+  margin-bottom: 2rem;
+  padding-bottom: 2rem;
   animation: fadeIn 0.5s;
 }
 @keyframes fadeIn {
@@ -494,6 +549,12 @@ header.compact h1 { font-size: 1.4rem; }
   transition: width 0.6s ease-out;
   min-width: 4px;
 }
+.bar-model-name {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
 .bar-value {
   position: absolute;
   right: 10px;
@@ -557,6 +618,7 @@ header.compact h1 { font-size: 1.4rem; }
   border-radius: var(--radius);
   padding: 1.5rem;
   margin-bottom: 2rem;
+  padding-bottom: 2rem;
   animation: fadeIn 0.3s;
 }
 
@@ -639,6 +701,16 @@ header.compact h1 { font-size: 1.4rem; }
   white-space: nowrap;
 }
 
+.queue-job .job-models {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .queue-job .job-meta {
   display: flex;
   align-items: center;
@@ -697,6 +769,48 @@ header.compact h1 { font-size: 1.4rem; }
 }
 
 
+
+/* Scenario display */
+.scenario-section {
+  margin: 1.5rem 0;
+  padding: 1.25rem 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.scenario-section h2 {
+  font-size: 1.05rem;
+  margin: 0 0 1rem 0;
+  color: var(--text);
+}
+.scenario-display {
+  display: flex;
+  gap: 1.5rem;
+}
+.scenario-lang {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  background: var(--surface2);
+  border-radius: 6px;
+}
+.scenario-lang .scenario-flag {
+  font-size: 1.1rem;
+}
+.scenario-lang h3 {
+  display: inline;
+  font-size: 0.8rem;
+  margin: 0 0 0 0.5rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.scenario-lang p {
+  margin: 0.5rem 0 0 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+
 @media (max-width: 900px) {
   .stream-flowchart { flex-wrap: wrap; }
   .flow-phases { flex-wrap: wrap; }
@@ -704,4 +818,42 @@ header.compact h1 { font-size: 1.4rem; }
   .slot-indicators { margin-left: 0; }
   .bar-label { width: 100px; }
   #app { padding: 1rem; }
+
+  .scenario-display { flex-direction: column; }
+}
+
+/* Model response toggle */
+.slot-response {
+  margin-top: 0.5rem;
+}
+.response-toggle {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  padding: 0.25rem 0.6rem;
+  cursor: pointer;
+}
+.response-toggle:hover {
+  background: var(--border);
+}
+.response-text {
+  display: none;
+  margin-top: 0.4rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface2);
+  border-radius: 4px;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+  color: var(--text);
+}
+.response-text.expanded {
+  display: block;
+}
+  .scenario-display { flex-direction: column; }
 }

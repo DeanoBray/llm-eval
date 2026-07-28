@@ -172,10 +172,12 @@ export class EvaluationPipeline {
       });
       // Attach raw response to slot result for display in debug panel
       outcome.result.response = outcome.response;
+      outcome.result.modelName = this.llm.getModelNames()[outcome.result.slot];
       slotResults.push(outcome.result);
     }
 
     const duration = Date.now() - startTime;
-    return { scenario, responses, slotResults, duration };
+    return { scenario, responses, modelNames: this.llm.getModelNames(),
+      slotResults, duration };
   }
 }

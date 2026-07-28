@@ -39,12 +39,24 @@ export function defaultConfig(): LLMConfig {
     model: usModel,
   };
 
+  // Judge model: used for fact extraction and fact verification
+  // Uses the larger 35B Qwen variant for better multilingual factual analysis
+  const judgeModel = process.env.JUDGE_MODEL || 'Qwen3.6-35B-A3B-Uncensored-Heretic-MLX-8bit';
+
+  const judgeBackend: LLMBackendConfig = {
+    name: 'judge',
+    baseURL: `${baseURL}/v1`,
+    apiKey,
+    model: judgeModel,
+  };
+
   return {
     backends: {
       'cn-model-en': qwenBackend,
       'cn-model-zh': qwenBackend,
       'us-model-en': usBackend,
       'us-model-zh': usBackend,
+      'judge': judgeBackend,
     },
     mockMode: process.env.MOCK_MODE === 'true',
   };
@@ -67,6 +79,15 @@ export class LLMClient {
 
   constructor(config?: LLMConfig) {
     this.config = config || defaultConfig();
+  }
+
+  /** Return which model string each slot maps to */
+  getModelNames(): Record<string, string> {
+    const names: Record<string, string> = {};
+    for (const [slot, backend] of Object.entries(this.config.backends)) {
+      names[slot] = backend.model;
+    }
+    return names;
   }
 
   /** Send a prompt to the specified model slot */

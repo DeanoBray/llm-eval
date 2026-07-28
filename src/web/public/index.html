@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LLM Eval — Bias Evaluation Pipeline</title>
-  <link rel="stylesheet" href="/style.css?v=5">
+  <link rel="stylesheet" href="/style.css?v=14">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
@@ -74,6 +74,35 @@
       <!-- Job Status Banner (queue position / running / complete / error) -->
       <div id="job-status-banner" class="job-banner" style="display:none;"></div>
 
+      <!-- Loading indicator -->
+
+      <!-- Aggregated Visualization (shown when all 4 complete) — at the top -->
+      <section class="aggregate-section" id="aggregate-section" style="display:none;">
+        <h2>Bias Score Comparison</h2>
+        <p class="scoring-explanation">
+          Scores range from <strong>0%</strong> (neutral, fact-based) to <strong>100%</strong>
+          (heavily biased). Each score reflects the model's response framing,
+          factual selectivity, and alignment with state narratives — measured
+          against a politically neutral baseline.
+        </p>
+        <div class="aggregate-chart" id="aggregate-chart"></div>
+      </section>
+    
+      <div id="pipeline-loading" class="pipeline-loading">
+        <div class="spinner"></div>
+        <p>Loading job data…</p>
+      </div>
+
+      <!-- Pipeline description -->
+      <div id="pipeline-description" class="pipeline-description" style="display:none;">
+        <p>
+          Each row sends the scenario to a different model–language pair.
+          The pipeline translates (where needed), queries the model,
+          detects refusals, extracts and verifies factual claims, then
+          computes a bias score.
+        </p>
+      </div>
+
       <!-- 4-Row Parallel Pipeline Display -->
       <div class="streams-container">
 
@@ -122,14 +151,25 @@
         </div>
       </div>
 
-      <!-- Aggregated Visualization (shown when all 4 complete) -->
-      <section class="aggregate-section" id="aggregate-section" style="display:none;">
-        <h2>Bias Score Comparison</h2>
-        <div class="aggregate-chart" id="aggregate-chart"></div>
+      <!-- Input scenario display -->
+      <section class="scenario-section" id="scenario-section" style="display:none;">
+        <h2>Input Scenario</h2>
+        <div class="scenario-display">
+          <div class="scenario-lang">
+            <span class="scenario-flag">🇬🇧</span>
+            <h3>English</h3>
+            <p id="scenario-english-text"></p>
+          </div>
+          <div class="scenario-lang">
+            <span class="scenario-flag">🇨🇳</span>
+            <h3>Mandarin</h3>
+            <p id="scenario-chinese-text"></p>
+          </div>
+        </div>
       </section>
     </div>
   </div>
 
-  <script src="/script.js?v=6"></script>
+  <script src="/script.js?v=13"></script>
 </body>
 </html>

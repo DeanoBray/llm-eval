@@ -23,9 +23,8 @@ export class FactExtractor {
       ? this.buildZhPrompt(response)
       : this.buildEnPrompt(response);
 
-    // Use the same model that produced the response for extraction
-    // (it knows its own language better)
-    const result = await this.llm.query(slot, prompt);
+    // Use the dedicated judge model for extraction regardless of source model
+    const result = await this.llm.query('judge', prompt);
     return this.parseFactResponse(result);
   }
 

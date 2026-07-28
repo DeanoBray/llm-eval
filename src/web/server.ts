@@ -5,6 +5,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
 import { LLMClient, defaultConfig } from '../pipeline/llm-client';
 import { JobManager } from './job-manager';
+import { cleanupIncompleteJobs } from './job-store';
 import type { Scenario } from '../pipeline/types';
 
 const PORT = parseInt(process.env.PORT || '3007', 10);
@@ -155,6 +156,11 @@ wss.on('connection', (ws: WebSocket) => {
     console.error('WebSocket error:', err.message);
   });
 });
+
+const cleaned = cleanupIncompleteJobs();
+if (cleaned > 0) {
+  console.log(`Cleaned up ${cleaned} incomplete job(s) from previous run`);
+}
 
 // === Start ===
 server.listen(PORT, () => {

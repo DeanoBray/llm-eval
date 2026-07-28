@@ -19,8 +19,8 @@ export class FactVerifier {
   async verify(fact: Fact): Promise<FactVerification> {
     const prompt = this.buildVerificationPrompt(fact);
 
-    // Use a neutral slot for verification (US model, English)
-    const result = await this.llm.query('us-model-en', prompt);
+    // Use the dedicated judge model for fact verification
+    const result = await this.llm.query('judge', prompt);
     return this.parseVerificationResponse(fact.id, result);
   }
 

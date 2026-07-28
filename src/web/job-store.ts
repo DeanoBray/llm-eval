@@ -26,6 +26,7 @@ export interface StoredJob {
   startedAt?: number;
   completedAt?: number;
   error?: string;
+  modelNames?: Record<string, string>;
 }
 
 function ensureDir(): void {
@@ -50,6 +51,71 @@ export function loadJob(jobId: string): StoredJob | null {
   } catch {
     return null;
   }
+}
+
+export function deleteJob(jobId: string): void {
+  try {
+    fs.unlinkSync(filePath(jobId));
+  } catch {
+    // file already gone — fine
+  }
+}
+
+/** Clean up jobs that were interrupted by a server restart */
+export function cleanupIncompleteJobs(): number {
+  ensureDir();
+  const files = fs.readdirSync(DATA_DIR).filter(f => f.endsWith('.json'));
+  let deleted = 0;
+  for (const f of files) {
+    try {
+      const raw = fs.readFileSync(path.join(DATA_DIR, f), 'utf-8');
+      const job = JSON.parse(raw) as StoredJob;
+      if (job.status === 'running' || job.status === 'queued') {
+        fs.unlinkSync(path.join(DATA_DIR, f));
+        deleted++;
+      }
+    } catch {
+      // skip corrupt files
+    }
+  }
+  return deleted;
+}
+
+/** Trim completed jobs to at most  most recent, deleting oldest first */
+export function trimCompletedJobs(keep: number): number {
+  ensureDir();
+  const files = fs.readdirSync(DATA_DIR)
+    .filter(f => f.endsWith('.json'))
+    .map(f => path.join(DATA_DIR, f));
+
+  // Parse all jobs, keep track of completed ones with their mtimes
+  const completed: { file: string; completedAt: number }[] = [];
+  for (const f of files) {
+    try {
+      const raw = fs.readFileSync(f, 'utf-8');
+      const job = JSON.parse(raw) as StoredJob;
+      if (job.status === 'completed' || job.status === 'error') {
+        completed.push({ file: f, completedAt: job.completedAt || 0 });
+      }
+    } catch {
+      // skip corrupt files
+    }
+  }
+
+  if (completed.length <= keep) return 0;
+
+  // Sort by completedAt descending (newest first), delete the excess
+  completed.sort((a, b) => b.completedAt - a.completedAt);
+  let deleted = 0;
+  for (let i = keep; i < completed.length; i++) {
+    try {
+      fs.unlinkSync(completed[i].file);
+      deleted++;
+    } catch {
+      // file already gone
+    }
+  }
+  return deleted;
 }
 
 export function listJobs(limit = 50): StoredJob[] {

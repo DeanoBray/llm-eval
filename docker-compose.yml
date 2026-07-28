@@ -3,6 +3,8 @@ services:
     build: .
     container_name: llm-eval
     network_mode: host
+    volumes:
+      - ./data:/app/data
     env_file:
       - .env
     restart: unless-stopped

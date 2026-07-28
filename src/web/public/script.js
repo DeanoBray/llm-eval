@@ -1,6 +1,8 @@
 // === llm-eval Frontend ===
 // Dual-mode: Landing page (/) and Job page (/job/<id>)
 
+
+
 let ws = null;
 let currentJobId = null;
 let pipelineStartTime = 0;
@@ -9,6 +11,7 @@ let reconnectAttempts = 0;
 const MAX_RECONNECT = 5;
 
 let slotEvents = {};
+let phaseTimestamps = {};
 let debugVisible = {};
 
 const PHASES = [
@@ -149,7 +152,6 @@ function navigateToJob(jobId) {
   currentJobId = jobId;
   history.pushState(null, '', '/job/' + jobId);
   showPipeline();
-  setupAllFlowcharts();
   loadJob(jobId);
   stopQueuePolling();
 }
@@ -157,6 +159,10 @@ function navigateToJob(jobId) {
 // === State Restoration on Refresh or Navigate ===
 
 async function loadJob(jobId) {
+  const loadingEl = document.getElementById('pipeline-loading');
+  const descEl = document.getElementById('pipeline-description');
+  loadingEl.style.display = 'flex';
+  descEl.style.display = 'none';
   try {
     const response = await fetch('/api/jobs/' + jobId);
     if (!response.ok) {
@@ -165,49 +171,37 @@ async function loadJob(jobId) {
     }
 
     const state = await response.json();
+    loadingEl.style.display = 'none';
 
     if (state.status === 'queued') {
       showQueuePosition(state.queuePosition);
       startPollingQueue(jobId);
     } else {
       hideQueueBanner();
+      if (state.status === 'running' || state.status === 'completed' || state.status === 'error') {
+        descEl.style.display = 'block';
+      }
     }
 
     if (state.status === 'running' || state.status === 'completed') {
-      // Restore events (debug panels + flowcharts)
-      if (state.events) {
-        Object.keys(state.events).forEach(slot => {
-          if (!slotEvents[slot]) slotEvents[slot] = [];
-          state.events[slot].forEach(evt => {
-            slotEvents[slot].push({
-              elapsed: '—',
-              step: evt.step,
-              status: evt.status,
-              message: evt.message,
-              ts: evt.timestamp,
-            });
-            replayPhaseState(slot, evt.step, evt.status, evt.message);
-          });
-          renderDebugPanel(slot);
-        });
-      }
-
-      // Restore any completed slot results
-      if (state.slotResults && state.slotResults.length > 0) {
-        state.slotResults.forEach(sr => {
-          displaySlotResult(sr.slot, sr);
-        });
-
-        if (state.slotResults.length >= 4) {
-          aggregateSection.style.display = 'block';
-          showAggregateChartFromResults(state.slotResults);
-        }
-      }
+      // Build flowchart DOM (inside loadJob so DOM is ready)
+      setupAllFlowcharts();
+      handleJobSync({
+        type: 'job-sync',
+        jobId: state.id,
+        status: state.status,
+        queuePosition: state.queuePosition || 0,
+        slotEvents: state.events,
+        slotResults: state.slotResults,
+        scenario: state.scenario,
+        startedAt: state.startedAt,
+      });
     }
 
     if (state.status === 'completed') {
       showJobBanner('completed', 'Job complete');
-      return; // No need for WebSocket
+      stopTimer();
+      return; // State fully restored from HTTP above — no WebSocket needed
     }
 
     if (state.status === 'error') {
@@ -215,9 +209,10 @@ async function loadJob(jobId) {
       return;
     }
 
-    // Connect WebSocket and subscribe to get live updates + past events
+    // Connect WebSocket for live updates on running jobs
     connectAndSubscribe(jobId);
   } catch (err) {
+    loadingEl.style.display = 'none';
     showJobError('Failed to load job: ' + err.message);
   }
 }
@@ -354,8 +349,8 @@ function handleJobSync(sync) {
   if (sync.status === 'running') {
     hideQueueBanner();
     showJobBanner('running', 'Job ' + sync.jobId + ' running');
-    if (!pipelineStartTime) {
-      pipelineStartTime = Date.now();
+    if (!pipelineStartTime && sync.startedAt) {
+      pipelineStartTime = sync.startedAt;
       startTimer();
     }
   } else if (sync.status === 'completed') {
@@ -366,7 +361,7 @@ function handleJobSync(sync) {
   // Replay all accumulated events into debug panels
   if (sync.slotEvents) {
     Object.keys(sync.slotEvents).forEach(slot => {
-      if (!slotEvents[slot]) slotEvents[slot] = [];
+      slotEvents[slot] = [];
       sync.slotEvents[slot].forEach(evt => {
         slotEvents[slot].push({
           elapsed: '—',
@@ -384,9 +379,20 @@ function handleJobSync(sync) {
   if (sync.slotEvents) {
     Object.keys(sync.slotEvents).forEach(slot => {
       sync.slotEvents[slot].forEach(evt => {
-        replayPhaseState(slot, evt.step, evt.status, evt.message);
+        replayPhaseState(slot, evt.step, evt.status, evt.message, evt.timestamp);
       });
     });
+  }
+
+
+  // Show scenario if provided
+  if (sync.scenario) {
+    const scenarioSection = document.getElementById('scenario-section');
+    const engText = document.getElementById('scenario-english-text');
+    const chiText = document.getElementById('scenario-chinese-text');
+    if (scenarioSection) scenarioSection.style.display = 'block';
+    if (engText && sync.scenario.english) engText.textContent = sync.scenario.english;
+    if (chiText && sync.scenario.chinese) chiText.textContent = sync.scenario.chinese;
   }
 
   // Show any completed results
@@ -399,14 +405,14 @@ function handleJobSync(sync) {
   }
 }
 
-function replayPhaseState(slot, step, status, message) {
+function replayPhaseState(slot, step, status, message, replayTimestamp) {
   const phaseIdx = PHASES.findIndex(p => p.id === step);
   if (phaseIdx === -1 && step !== 'done') return;
 
   if (step === 'done') {
     // Mark all phases done
     PHASES.forEach((p, i) => {
-      updatePhaseNode(slot, p.id, 'done');
+      updatePhaseNode(slot, p.id, 'done', replayTimestamp);
       if (i < PHASES.length - 1) updateArrow(slot, i, 'passed');
     });
     return;
@@ -415,7 +421,7 @@ function replayPhaseState(slot, step, status, message) {
   if (status === 'done') {
     // Mark this and all previous phases as done
     for (let i = 0; i <= phaseIdx; i++) {
-      updatePhaseNode(slot, PHASES[i].id, 'done');
+      updatePhaseNode(slot, PHASES[i].id, 'done', replayTimestamp);
     }
     for (let i = 0; i < phaseIdx; i++) {
       updateArrow(slot, i, 'passed');
@@ -424,19 +430,19 @@ function replayPhaseState(slot, step, status, message) {
   } else if (status === 'running') {
     // Mark previous phases as done, this one as running
     for (let i = 0; i < phaseIdx; i++) {
-      updatePhaseNode(slot, PHASES[i].id, 'done');
+      updatePhaseNode(slot, PHASES[i].id, 'done', replayTimestamp);
       updateArrow(slot, i, 'passed');
     }
-    updatePhaseNode(slot, step, 'running');
+    updatePhaseNode(slot, step, 'running', replayTimestamp);
     if (phaseIdx > 0) updateArrow(slot, phaseIdx - 1, 'active');
 
     // Check for refusal short-circuit
     if (step === 'detecting-refusal' && message.toLowerCase().includes('refusal detected')) {
-      updatePhaseNode(slot, 'extracting-facts', 'skipped');
-      updatePhaseNode(slot, 'verifying-facts', 'skipped');
+      updatePhaseNode(slot, 'extracting-facts', 'skipped', replayTimestamp);
+      updatePhaseNode(slot, 'verifying-facts', 'skipped', replayTimestamp);
     }
   } else if (status === 'error') {
-    updatePhaseNode(slot, step, 'error');
+    updatePhaseNode(slot, step, 'error', replayTimestamp);
   }
 }
 
@@ -566,8 +572,22 @@ function displaySlotResult(slot, result) {
   if (result.biasIndicators && result.biasIndicators.length > 0) {
     html += '<div class="slot-indicators">';
     result.biasIndicators.forEach(bi => {
-      html += '<div class="indicator-row"><span class="indicator-dim">' + bi.dimension + '</span><span class="indicator-sev ' + bi.severity + '">' + bi.severity + '</span></div>';
+      // Invert accuracy severity labels: bias framework says 'low' risk = good accuracy,
+      // but users read 'accuracy: low' as 'accuracy is low'. Flip it for this dimension.
+      const displaySev = bi.dimension === 'accuracy'
+        ? (bi.severity === 'high' ? 'low' : bi.severity === 'low' ? 'high' : bi.severity)
+        : bi.severity;
+      html += '<div class="indicator-row"><span class="indicator-dim">' + bi.dimension + '</span><span class="indicator-sev ' + bi.severity + '">' + displaySev + '</span></div>';
     });
+    html += '</div>';
+  }
+
+  // Model response (collapsible)
+  if (result.response) {
+    const respId = 'resp-' + slot;
+    html += '<div class="slot-response">';
+    html += '<button class="response-toggle" onclick="document.getElementById(\'' + respId + '\').classList.toggle(\'expanded\');this.textContent=this.textContent===\'Show Response\'?\'Hide Response\':\'Show Response\'">Show Response</button>';
+    html += '<pre class="response-text" id="' + respId + '">' + escapeHtml(result.response) + '</pre>';
     html += '</div>';
   }
 
@@ -596,7 +616,7 @@ function showAggregateChartFromResults(slotResults) {
     const barWidth = Math.max(score * 100, 4);
     const barColor = score > 0.5 ? 'var(--red)' : score > 0.2 ? 'var(--yellow)' : 'var(--green)';
     svg += '<div class="bar-row">' +
-      '<div class="bar-label">' + FLAGS[item.slot] + ' ' + LABELS[item.slot] + '</div>' +
+      '<div class="bar-label">' + FLAGS[item.slot] + ' ' + LABELS[item.slot] + '<br><span class="bar-model-name">' + (item.modelName || '').split('-')[0] + '</span></div>' +
       '<div class="bar-track">' +
         '<div class="bar-fill" style="width:' + barWidth + '%;background:' + barColor + ';"></div>' +
         '<span class="bar-value">' + (score * 100).toFixed(0) + '%</span>' +
@@ -611,6 +631,7 @@ function showAggregateChartFromResults(slotResults) {
 
 function setupAllFlowcharts() {
   slotEvents = {};
+  phaseTimestamps = {};
   completedSlots = [];
   ALL_SLOTS.forEach(slot => {
     buildFlowchart(slot);
@@ -647,7 +668,7 @@ function buildFlowchart(slot) {
   phasesEl.innerHTML = html;
 }
 
-function updatePhaseNode(slot, phaseId, state) {
+function updatePhaseNode(slot, phaseId, state, replayTimestamp) {
   const node = document.getElementById('node-' + slot + '-' + phaseId);
   if (!node) return;
   node.className = node.className.replace(/\s(pending|running|done|error|skipped)/g, '');
@@ -660,7 +681,13 @@ function updatePhaseNode(slot, phaseId, state) {
   if (state !== 'pending') {
     const timeEl = document.getElementById('time-' + slot + '-' + phaseId);
     if (timeEl && pipelineStartTime) {
-      timeEl.textContent = '+' + ((Date.now() - pipelineStartTime) / 1000).toFixed(1) + 's';
+      if (!phaseTimestamps[slot]) phaseTimestamps[slot] = {};
+      // Only set timestamp once — first transition away from pending
+      if (!phaseTimestamps[slot][phaseId]) {
+        phaseTimestamps[slot][phaseId] = replayTimestamp || Date.now();
+      }
+      const phaseTs = phaseTimestamps[slot][phaseId];
+      timeEl.textContent = '+' + ((phaseTs - pipelineStartTime) / 1000).toFixed(3) + 's';
       timeEl.style.opacity = '1';
     }
   }
@@ -804,7 +831,7 @@ function renderQueueStatus(data) {
 
   // Recent jobs (last 5)
   if (data.recent.length > 0) {
-    const recent5 = data.recent.slice(0, 5);
+    const recent5 = data.recent.slice(0, 3);
     recentEl.innerHTML = '<div class="queue-group-header">Recent</div>' +
       recent5.map(j => renderJobRow(j)).join('');
   } else {
@@ -825,6 +852,7 @@ function renderJobRow(j) {
 
   return '<a href="/job/' + j.id + '" class="queue-job" onclick="event.preventDefault(); navigateToJob(\'' + j.id + '\');">' +
     '<span class="job-id">' + j.id + '</span>' +
+    (j.modelNames ? '<span class="job-models">' + [...new Set(Object.values(j.modelNames))].map(m => m.split('-MLX')[0]).join(', ') + '</span>' : '') +
     '<span class="job-scenario" title="' + escapeHtml(j.scenarioSummary) + '">' + escapeHtml(j.scenarioSummary) + '</span>' +
     '<span class="job-meta">' +
       '<span class="job-status ' + j.status + '">' + j.status + '</span>' +
@@ -860,7 +888,7 @@ function stopQueuePolling() {
 
 if (isJobPage) {
   showPipeline();
-  setupAllFlowcharts();
+  // setupAllFlowcharts() is now called inside loadJob() after the DOM is parsed
   loadJob(jobIdFromUrl);
 }
  else {
@@ -873,7 +901,6 @@ window.addEventListener('popstate', () => {
   if (newMatch) {
     currentJobId = newMatch[1];
     showPipeline();
-    setupAllFlowcharts();
     loadJob(currentJobId);
     stopQueuePolling();
   } else {

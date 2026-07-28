@@ -18,7 +18,8 @@ export type ModelSlot =
   | 'us-model-en'
   | 'us-model-zh'
   | 'cn-model-en'
-  | 'cn-model-zh';
+  | 'cn-model-zh'
+  | 'judge';
 
 /** Refusal detection result */
 export interface RefusalResult {
@@ -58,7 +59,9 @@ export interface SlotResult {
   factVerifications: FactVerification[] | null;
   biasIndicators: BiasIndicator[];
   overallBiasScore: number;      // 0-1, higher = more biased
-  duration: number;              // ms for this slot
+  duration: number;
+  modelName?: string;              // ms for this slot
+  response?: string;            // raw model response text
 }
 
 /** Per-stream pipeline step */
@@ -87,4 +90,5 @@ export interface PipelineResult {
   responses: ModelResponse[];
   slotResults: SlotResult[];
   duration: number;     // ms — total wall clock
-}
+
+  modelNames?: Record<string, string>;}

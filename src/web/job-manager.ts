@@ -2,7 +2,7 @@ import { WebSocket } from 'ws';
 import type { Scenario, StreamProgress, ModelSlot, SlotResult, PipelineResult } from '../pipeline/types';
 import { EvaluationPipeline } from '../pipeline';
 import { LLMClient } from '../pipeline/llm-client';
-import { saveJob, loadJob, listJobSummaries } from './job-store';
+import { saveJob, loadJob, listJobSummaries, trimCompletedJobs } from './job-store';
 
 const MAX_CONCURRENT = 3;
 
@@ -17,6 +17,7 @@ interface StoredEvent {
 
 interface Job {
   id: string;
+  modelNames?: Record<string, string>;
   status: 'queued' | 'running' | 'completed' | 'error';
   scenario: Scenario;
   queuePosition: number; // 0 = currently running, >0 = waiting
@@ -46,6 +47,7 @@ export interface JobState {
 /** Summary of a job for the landing page queue list */
 export interface JobSummary {
   id: string;
+  modelNames?: Record<string, string>;
   status: 'queued' | 'running' | 'completed' | 'error';
   scenarioSummary: string;
   queuePosition: number;
@@ -89,6 +91,7 @@ export class JobManager {
   private persist(job: Job): void {
     saveJob({
       id: job.id,
+      modelNames: job.modelNames,
       status: job.status,
       scenario: job.scenario,
       events: job.events,
@@ -139,6 +142,7 @@ export class JobManager {
   } {
     const summarize = (job: Job): JobSummary => ({
       id: job.id,
+      modelNames: job.modelNames,
       status: job.status,
       scenarioSummary: job.scenario.english.slice(0, 80) + (job.scenario.english.length > 80 ? '...' : ''),
       queuePosition: job.status === 'queued'
@@ -243,10 +247,31 @@ export class JobManager {
 
   /** Subscribe a WebSocket to a job — sends sync then live events */
   subscribe(id: string, ws: WebSocket): boolean {
-    const job = this.jobs.get(id);
-    if (!job) return false;
+    let job = this.jobs.get(id);
 
-    job.subscribers.add(ws);
+    // Fall back to disk for jobs that aren't in memory (e.g., after server restart)
+    if (!job) {
+      const stored = loadJob(id);
+      if (!stored) return false;
+      // Reconstruct in-memory Job from stored data
+      job = {
+        id: stored.id,
+        status: stored.status,
+        scenario: stored.scenario,
+        queuePosition: 0, // not applicable for completed/restored jobs
+        events: stored.events as Record<string, StoredEvent[]>,
+        slotResults: stored.slotResults,
+        createdAt: stored.createdAt,
+        startedAt: stored.startedAt,
+        completedAt: stored.completedAt,
+        error: stored.error,
+        subscribers: new Set(),
+      };
+      this.jobs.set(id, job);
+      job.subscribers.add(ws);
+    } else {
+      job.subscribers.add(ws);
+    }
 
     // Send full sync with all accumulated events
     const syncPayload = {
@@ -258,6 +283,7 @@ export class JobManager {
         : 0,
       slotEvents: job.events,
       slotResults: job.slotResults,
+      startedAt: job.startedAt,
     };
     ws.send(JSON.stringify(syncPayload));
 
@@ -329,6 +355,17 @@ export class JobManager {
       };
       job.events[progress.slot].push(stored);
 
+      // Accumulate slot results as they complete
+      if ((progress.step === 'done' || progress.step === 'scoring-bias') && progress.result) {
+        // Avoid duplicates (e.g., scoring-bias also fires as step=done)
+        const existing = job.slotResults.findIndex(r => r.slot === progress.slot);
+        if (existing >= 0) {
+          job.slotResults[existing] = progress.result;
+        } else {
+          job.slotResults.push(progress.result);
+        }
+      }
+
       // Persist periodically (every event during running)
       this.persist(job);
 
@@ -342,6 +379,7 @@ export class JobManager {
 
       // Persist final state
       this.persist(job);
+      trimCompletedJobs(20);
 
       // Broadcast completion
       this.broadcast(id, { type: 'result', result });
@@ -356,6 +394,7 @@ export class JobManager {
 
       // Persist error state
       this.persist(job);
+      trimCompletedJobs(20);
 
       this.broadcast(id, {
         type: 'error',
