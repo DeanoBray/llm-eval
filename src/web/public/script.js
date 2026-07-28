@@ -79,14 +79,17 @@ async function translateText(text) {
   if (!text || text.trim().length === 0) {
     zhInput.value = '';
     translationHint.textContent = '';
+    runBtn.disabled = false;
     return;
   }
   const CHINESE_REGEX = /[\u4e00-\u9fff]/;
   if (CHINESE_REGEX.test(text)) {
     translationHint.textContent = 'Text appears to contain Chinese characters — edit the translation as needed';
+    runBtn.disabled = false;
     return;
   }
   translationHint.textContent = 'Translating...';
+  runBtn.disabled = true;
   try {
     const response = await fetch('/api/translate', {
       method: 'POST',
@@ -103,6 +106,7 @@ async function translateText(text) {
   } catch (err) {
     translationHint.textContent = 'Translation unavailable — will translate during pipeline';
   }
+  runBtn.disabled = false;
 }
 
 // Translate default on load
