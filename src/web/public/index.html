@@ -59,8 +59,11 @@
       <header class="compact">
         <button id="back-btn" class="btn-back">← Back</button>
         <h1>Pipeline Execution</h1>
-        <span id="pipeline-timer" class="timer"></span>
+        <span id="pipeline-timer" class="timer">—</span>
       </header>
+
+      <!-- Job Status Banner (queue position / running / complete / error) -->
+      <div id="job-status-banner" class="job-banner" style="display:none;"></div>
 
       <!-- 4-Row Parallel Pipeline Display -->
       <div class="streams-container">
@@ -118,6 +121,6 @@
     </div>
   </div>
 
-  <script src="/script.js?v=4"></script>
+  <script src="/script.js?v=5"></script>
 </body>
 </html>

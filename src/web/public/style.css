@@ -502,6 +502,53 @@ header.compact h1 { font-size: 1.4rem; }
   color: var(--text);
 }
 
+/* === Job Status Banner === */
+.job-banner {
+  padding: 0.8rem 1.2rem;
+  border-radius: var(--radius);
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  animation: fadeIn 0.3s;
+}
+
+.job-banner.queued {
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.job-banner.queued .queue-icon {
+  font-size: 1.2rem;
+}
+
+.job-banner.queued .queue-sub {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.job-banner.running {
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: var(--blue);
+}
+
+.job-banner.completed {
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: var(--green);
+}
+
+.job-banner.error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: var(--red);
+}
+
 /* === Responsive === */
 @media (max-width: 900px) {
   .stream-flowchart { flex-wrap: wrap; }

@@ -3,9 +3,9 @@ import http from 'http';
 import fs from 'fs';
 import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
-import { EvaluationPipeline } from '../pipeline';
 import { LLMClient, defaultConfig } from '../pipeline/llm-client';
-import type { Scenario, StreamProgress, ModelSlot } from '../pipeline/types';
+import { JobManager } from './job-manager';
+import type { Scenario } from '../pipeline/types';
 
 const PORT = parseInt(process.env.PORT || '3007', 10);
 
@@ -19,11 +19,13 @@ const PUBLIC_DIR = (() => {
 // Initialize
 const llmConfig = defaultConfig();
 const llmClient = new LLMClient(llmConfig);
-const pipeline = new EvaluationPipeline(llmClient);
+const jobManager = new JobManager(llmClient);
 
 const app = express();
 app.use(express.json());
-app.use(express.static(PUBLIC_DIR));
+
+// Static files — but NOT index.html (we serve it via routes)
+app.use(express.static(PUBLIC_DIR, { index: false }));
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
@@ -32,7 +34,7 @@ const wss = new WebSocketServer({ server });
 
 // Health check
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', mockMode: llmConfig.mockMode });
+  res.json({ status: 'ok', mockMode: llmConfig.mockMode, maxConcurrent: 3 });
 });
 
 // Get config info (without secrets)
@@ -52,7 +54,8 @@ app.post('/api/translate', async (req, res) => {
       res.status(400).json({ error: 'text is required' });
       return;
     }
-    const translation = await pipeline.translateToChinese(text.trim());
+    // Use the internal pipeline of the JobManager for translation
+    const translation = await jobManager.translateToChinese(text.trim());
     res.json({ translation });
   } catch (err: any) {
     console.error('Translation error:', err);
@@ -60,81 +63,84 @@ app.post('/api/translate', async (req, res) => {
   }
 });
 
-// === WebSocket Pipeline Execution ===
+// Create a new evaluation job
+app.post('/api/jobs', (req, res) => {
+  try {
+    const { english, chinese } = req.body;
+    if (!english || !chinese) {
+      res.status(400).json({ error: 'Both english and chinese text are required' });
+      return;
+    }
+    const scenario: Scenario = { english, chinese };
+    const jobId = jobManager.createJob(scenario);
+    console.log(`Job ${jobId} created: "${english.slice(0, 50)}..."`);
+    res.status(201).json({ jobId });
+  } catch (err: any) {
+    console.error('Job creation error:', err);
+    res.status(500).json({ error: err.message || 'Failed to create job' });
+  }
+});
+
+// Get job state (survives refreshes)
+app.get('/api/jobs/:id', (req, res) => {
+  const state = jobManager.getState(req.params.id);
+  if (!state) {
+    res.status(404).json({ error: 'Job not found' });
+    return;
+  }
+  res.json(state);
+});
+
+// === SPA Routing ===
+// /job/<id> -> serve index.html (frontend handles routing)
+app.get('/job/:id', (_req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+});
+
+// Root -> serve index.html
+app.get('/', (_req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+});
+
+// === WebSocket ===
 
 wss.on('connection', (ws: WebSocket) => {
   console.log('WebSocket client connected');
+  let subscribedJob: string | null = null;
 
-  // Ping/pong keepalive — prevents nginx/proxy timeout during long operations
+  // Ping/pong keepalive
   const pingInterval = setInterval(() => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.ping();
     }
-  }, 30000); // every 30 seconds
+  }, 30000);
 
-  ws.on('pong', () => {
-    // Client responded — connection is alive, nothing to do
-  });
-
-  ws.on('message', async (data) => {
+  ws.on('message', (data) => {
     try {
       const msg = JSON.parse(data.toString());
 
-      if (msg.type === 'run-pipeline') {
-        // Scenario is already translated by the frontend
-        const scenario: Scenario = {
-          english: msg.english,
-          chinese: msg.chinese,
-        };
-
-        if (!scenario.english || !scenario.chinese) {
-          ws.send(JSON.stringify({
-            type: 'error',
-            message: 'Both English and Chinese text are required',
-          }));
-          return;
+      if (msg.type === 'subscribe-job' && msg.jobId) {
+        // Unsubscribe from previous job if any
+        if (subscribedJob) {
+          jobManager.unsubscribe(subscribedJob, ws);
         }
-
-        console.log('Pipeline started:', scenario.english.slice(0, 60) + '...');
-
-        // Acknowledge receipt — each slot gets a "pipeline-started" event
-        const slots: ModelSlot[] = ['us-model-en', 'us-model-zh', 'cn-model-en', 'cn-model-zh'];
-        slots.forEach(slot => {
-          ws.send(JSON.stringify({
-            type: 'progress',
-            slot,
-            step: 'pipeline',
-            status: 'running',
-            message: 'Server received request — starting 4 parallel streams',
-          }));
-        });
-
-        // Run pipeline — all 4 streams in parallel
-        // Each progress event gets sent immediately to this client
-        const result = await pipeline.run(scenario, (progress: StreamProgress) => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'progress', ...progress }));
-          }
-        });
-
-        // Send final aggregated result
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'result', result }));
+        subscribedJob = msg.jobId;
+        const ok = jobManager.subscribe(msg.jobId, ws);
+        if (!ok) {
+          ws.send(JSON.stringify({ type: 'error', message: `Job ${msg.jobId} not found` }));
         }
       }
     } catch (err: any) {
-      console.error('Pipeline error:', err);
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-          type: 'error',
-          message: err.message || 'Pipeline execution failed',
-        }));
-      }
+      console.error('WebSocket message error:', err);
     }
   });
 
   ws.on('close', () => {
     clearInterval(pingInterval);
+    if (subscribedJob) {
+      jobManager.unsubscribe(subscribedJob, ws);
+    }
+    jobManager.unsubscribeAll(ws);
     console.log('WebSocket client disconnected');
   });
 
@@ -148,4 +154,5 @@ wss.on('connection', (ws: WebSocket) => {
 server.listen(PORT, () => {
   console.log(`llm-eval server running on port ${PORT}`);
   console.log(`Mock mode: ${llmConfig.mockMode}`);
+  console.log(`Max concurrent jobs: 3`);
 });
