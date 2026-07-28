@@ -107,6 +107,7 @@ export class EvaluationPipeline {
           biasIndicators: [], overallBiasScore: 0,
           duration: Date.now() - slotStart,
         });
+        refusalResult.response = response;
         onProgress?.({
           slot, step: 'done', status: 'done',
           message: `Completed — bias score: ${(refusalResult.overallBiasScore * 100).toFixed(0)}%`,
@@ -151,6 +152,7 @@ export class EvaluationPipeline {
         biasIndicators: [], overallBiasScore: 0,
         duration: Date.now() - slotStart,
       });
+      slotResult.response = response;
       onProgress?.({
         slot, step: 'done', status: 'done',
         message: `Completed — bias score: ${(slotResult.overallBiasScore * 100).toFixed(0)}%`,
