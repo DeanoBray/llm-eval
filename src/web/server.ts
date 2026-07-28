@@ -4,7 +4,7 @@ import fs from 'fs';
 import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
 import { LLMClient, defaultConfig } from '../pipeline/llm-client';
-import { JobManager } from './job-manager';
+import { JobManager, MAX_CONCURRENT } from './job-manager';
 import { cleanupIncompleteJobs } from './job-store';
 import type { Scenario } from '../pipeline/types';
 
@@ -35,7 +35,7 @@ const wss = new WebSocketServer({ server });
 
 // Health check
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', mockMode: llmConfig.mockMode, maxConcurrent: 3 });
+  res.json({ status: 'ok', mockMode: llmConfig.mockMode, maxConcurrent: MAX_CONCURRENT });
 });
 
 // Get config info (without secrets)

@@ -4,7 +4,7 @@ import { EvaluationPipeline } from '../pipeline';
 import { LLMClient } from '../pipeline/llm-client';
 import { saveJob, loadJob, listJobSummaries, trimCompletedJobs } from './job-store';
 
-const MAX_CONCURRENT = 2;
+export const MAX_CONCURRENT = 2;
 
 interface StoredEvent {
   slot: ModelSlot;

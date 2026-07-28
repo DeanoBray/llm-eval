@@ -45,7 +45,7 @@ test.describe('Job Queue & State Persistence', () => {
   });
 
   test('queue position updates for multiple jobs', async () => {
-    // Submit 5 jobs — only 3 should run, 2 should be queued
+    // Submit 5 jobs — only 2 should run, 3 should be queued
     const jobIds: string[] = [];
     for (let i = 0; i < 5; i++) {
       const res = await (await fetch(`${BASE}/api/jobs`, {
@@ -71,7 +71,7 @@ test.describe('Job Queue & State Persistence', () => {
       }
     }
 
-    // At least one should be queued (since max 3 concurrent with mock responses being fast)
+    // At least one should be queued (since max 2 concurrent with mock responses being fast)
     // But mock responses are instant, so all might complete... let's just verify
     // At least the first job should exist
     const firstJob = await (await fetch(`${BASE}/api/jobs/${jobIds[0]}`)).json();
