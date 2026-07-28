@@ -47,6 +47,8 @@ backBtn.addEventListener('click', () => {
   if (ws) { ws.close(); ws = null; }
   currentJobId = null;
   stopTimer();
+  stopQueuePolling();
+  startQueuePolling();
 });
 
 function showLanding() {
@@ -149,6 +151,7 @@ function navigateToJob(jobId) {
   showPipeline();
   setupAllFlowcharts();
   loadJob(jobId);
+  stopQueuePolling();
 }
 
 // === State Restoration on Refresh or Navigate ===
@@ -726,11 +729,124 @@ function escapeHtml(str) {
 }
 
 // === Init: Route to correct view ===
+// === Queue Status (Landing Page) ===
+let queuePollInterval = null;
+
+async function fetchQueueStatus() {
+  try {
+    const response = await fetch('/api/jobs');
+    if (!response.ok) return;
+    const data = await response.json();
+    renderQueueStatus(data);
+  } catch (e) {
+    // Silent fail — queue status is non-critical
+  }
+}
+
+function renderQueueStatus(data) {
+  const section = document.getElementById('queue-section');
+  const countEl = document.getElementById('queue-count');
+  const runningEl = document.getElementById('queue-running');
+  const waitingEl = document.getElementById('queue-waiting');
+  const recentEl = document.getElementById('queue-recent');
+
+  const totalActive = data.running.length + data.queued.length;
+
+  if (totalActive === 0 && data.recent.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+
+  // Queue count badge
+  countEl.textContent = totalActive + ' active';
+  if (totalActive === 0) {
+    countEl.textContent = 'idle';
+    countEl.className = 'queue-count empty';
+  } else {
+    countEl.className = 'queue-count';
+  }
+
+  // Running jobs
+  if (data.running.length > 0) {
+    runningEl.innerHTML = '<div class="queue-group-header">Running (' + data.running.length + ')</div>' +
+      data.running.map(j => renderJobRow(j)).join('');
+  } else {
+    runningEl.innerHTML = '';
+  }
+
+  // Queued jobs
+  if (data.queued.length > 0) {
+    waitingEl.innerHTML = '<div class="queue-group-header">Waiting (' + data.queued.length + ')</div>' +
+      data.queued.map(j => renderJobRow(j)).join('');
+  } else {
+    waitingEl.innerHTML = '';
+  }
+
+  // Recent jobs (last 5)
+  if (data.recent.length > 0) {
+    const recent5 = data.recent.slice(0, 5);
+    recentEl.innerHTML = '<div class="queue-group-header">Recent</div>' +
+      recent5.map(j => renderJobRow(j)).join('');
+  } else {
+    recentEl.innerHTML = '';
+  }
+}
+
+function renderJobRow(j) {
+  const slotProgress = j.runningSlots !== undefined
+    ? ' <span class="job-progress">' + j.runningSlots + '/' + j.totalSlots + ' slots</span>'
+    : '';
+
+  const positionInfo = j.status === 'queued'
+    ? ' <span class="job-progress">#' + j.queuePosition + ' in queue</span>'
+    : '';
+
+  const timeAgo = formatTimeAgo(j.createdAt);
+
+  return '<a href="/job/' + j.id + '" class="queue-job" onclick="event.preventDefault(); navigateToJob(\'' + j.id + '\');">' +
+    '<span class="job-id">' + j.id + '</span>' +
+    '<span class="job-scenario" title="' + escapeHtml(j.scenarioSummary) + '">' + escapeHtml(j.scenarioSummary) + '</span>' +
+    '<span class="job-meta">' +
+      '<span class="job-status ' + j.status + '">' + j.status + '</span>' +
+      slotProgress +
+      positionInfo +
+      '<span class="job-time">' + timeAgo + '</span>' +
+    '</span>' +
+  '</a>';
+}
+
+function formatTimeAgo(ts) {
+  const sec = Math.floor((Date.now() - ts) / 1000);
+  if (sec < 5) return 'just now';
+  if (sec < 60) return sec + 's ago';
+  if (sec < 3600) return Math.floor(sec / 60) + 'm ago';
+  return Math.floor(sec / 3600) + 'h ago';
+}
+
+function startQueuePolling() {
+  fetchQueueStatus();
+  if (queuePollInterval) clearInterval(queuePollInterval);
+  queuePollInterval = setInterval(fetchQueueStatus, 3000);
+}
+
+function stopQueuePolling() {
+  if (queuePollInterval) {
+    clearInterval(queuePollInterval);
+    queuePollInterval = null;
+  }
+}
+
+
 
 if (isJobPage) {
   showPipeline();
   setupAllFlowcharts();
   loadJob(jobIdFromUrl);
+}
+ else {
+  startQueuePolling();
 }
 
 // Handle browser back/forward
@@ -741,10 +857,12 @@ window.addEventListener('popstate', () => {
     showPipeline();
     setupAllFlowcharts();
     loadJob(currentJobId);
+    stopQueuePolling();
   } else {
     showLanding();
     if (ws) { ws.close(); ws = null; }
     currentJobId = null;
     stopTimer();
+    startQueuePolling();
   }
 });

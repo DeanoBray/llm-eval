@@ -41,6 +41,20 @@ export interface JobState {
   error?: string;
 }
 
+/** Summary of a job for the landing page queue list */
+export interface JobSummary {
+  id: string;
+  status: 'queued' | 'running' | 'completed' | 'error';
+  scenarioSummary: string;
+  queuePosition: number;
+  createdAt: number;
+  startedAt?: number;
+  completedAt?: number;
+  runningSlots?: number;
+  totalSlots?: number;
+  error?: string;
+}
+
 export class JobManager {
   private jobs: Map<string, Job> = new Map();
   private queue: string[] = [];
@@ -81,7 +95,57 @@ export class JobManager {
     return id;
   }
 
-  /** Get serializable state for REST API */
+  /** List all jobs for the landing page queue status */
+  listJobs(): {
+    queueLength: number;
+    running: JobSummary[];
+    queued: JobSummary[];
+    recent: JobSummary[];
+  } {
+    const summarize = (job: Job): JobSummary => ({
+      id: job.id,
+      status: job.status,
+      scenarioSummary: job.scenario.english.slice(0, 80) + (job.scenario.english.length > 80 ? '...' : ''),
+      queuePosition: job.status === 'queued'
+        ? (this.queue.indexOf(job.id) + 1)
+        : 0,
+      createdAt: job.createdAt,
+      startedAt: job.startedAt,
+      completedAt: job.completedAt,
+      runningSlots: job.status === 'running'
+        ? Object.keys(job.events).length
+        : undefined,
+      totalSlots: job.status === 'running' ? 4 : undefined,
+      error: job.error,
+    });
+
+    const allJobs = [...this.jobs.values()];
+
+    const running: JobSummary[] = allJobs
+      .filter(j => j.status === 'running')
+      .map(summarize)
+      .sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0));
+
+    const queued: JobSummary[] = allJobs
+      .filter(j => j.status === 'queued')
+      .map(summarize)
+      .sort((a, b) => a.queuePosition - b.queuePosition);
+
+    const recent: JobSummary[] = allJobs
+      .filter(j => j.status === 'completed' || j.status === 'error')
+      .map(summarize)
+      .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0))
+      .slice(0, 10);
+
+    return {
+      queueLength: queued.length,
+      running,
+      queued,
+      recent,
+    };
+  }
+
+
   getState(id: string): JobState | null {
     const job = this.jobs.get(id);
     if (!job) return null;

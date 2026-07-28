@@ -550,6 +550,153 @@ header.compact h1 { font-size: 1.4rem; }
 }
 
 /* === Responsive === */
+/* === Queue Status (Landing Page) === */
+.queue-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  animation: fadeIn 0.3s;
+}
+
+.queue-section h2 {
+  font-size: 1.2rem;
+  margin-bottom: 0.75rem;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.queue-count {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.15rem 0.6rem;
+  border-radius: 20px;
+  background: var(--accent);
+  color: white;
+}
+
+.queue-count.empty {
+  background: var(--green);
+}
+
+.queue-group-header {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin: 0.75rem 0 0.5rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.queue-group-header:first-child {
+  margin-top: 0;
+}
+
+.queue-group {
+  margin-bottom: 0.25rem;
+}
+
+.queue-group:empty {
+  display: none;
+}
+
+.queue-job {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+  text-decoration: none;
+  color: inherit;
+  margin-bottom: 0.2rem;
+}
+
+.queue-job:hover {
+  background: var(--surface2);
+}
+
+.queue-job .job-id {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent);
+  min-width: 30px;
+}
+
+.queue-job .job-scenario {
+  flex: 1;
+  font-size: 0.85rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-job .job-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.queue-job .job-status {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+}
+
+.queue-job .job-status.running {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--blue);
+}
+
+.queue-job .job-status.queued {
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--accent);
+}
+
+.queue-job .job-status.completed {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--green);
+}
+
+.queue-job .job-status.error {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--red);
+}
+
+.queue-job .job-progress {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.queue-job .job-time {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 50px;
+  text-align: right;
+}
+
+.queue-empty {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-style: italic;
+  padding: 0.3rem 0.75rem;
+}
+
+
 @media (max-width: 900px) {
   .stream-flowchart { flex-wrap: wrap; }
   .flow-phases { flex-wrap: wrap; }

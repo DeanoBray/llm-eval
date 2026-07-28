@@ -82,6 +82,12 @@ app.post('/api/jobs', (req, res) => {
 });
 
 // Get job state (survives refreshes)
+// List all jobs (queue status + active + recent)
+app.get('/api/jobs', (_req, res) => {
+  res.json(jobManager.listJobs());
+});
+
+
 app.get('/api/jobs/:id', (req, res) => {
   const state = jobManager.getState(req.params.id);
   if (!state) {
