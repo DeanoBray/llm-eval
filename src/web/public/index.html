@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LLM Eval — Bias Evaluation Pipeline</title>
-  <link rel="stylesheet" href="/style.css?v=3">
+  <link rel="stylesheet" href="/style.css?v=4">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
   <div id="app">
@@ -64,39 +64,48 @@
 
       <!-- 4-Row Parallel Pipeline Display -->
       <div class="streams-container">
+
+        <!-- US Model · English -->
         <div class="stream-row" id="stream-us-model-en">
-          <div class="stream-header">
-            <span class="stream-label">🇺🇸 US Model · English</span>
-            <span class="stream-status" id="status-us-model-en">Waiting...</span>
+          <div class="stream-flowchart">
+            <div class="flow-label">🇺🇸 US · EN</div>
+            <div class="flow-phases" id="phases-us-model-en"></div>
+            <div class="flow-debug-toggle" data-slot="us-model-en" onclick="toggleDebug('us-model-en')">⏺</div>
           </div>
-          <div class="stream-phases" id="phases-us-model-en"></div>
+          <div class="stream-debug" id="debug-us-model-en"></div>
           <div class="stream-result" id="result-us-model-en" style="display:none;"></div>
         </div>
 
+        <!-- US Model · 中文 -->
         <div class="stream-row" id="stream-us-model-zh">
-          <div class="stream-header">
-            <span class="stream-label">🇺🇸 US Model · 中文</span>
-            <span class="stream-status" id="status-us-model-zh">Waiting...</span>
+          <div class="stream-flowchart">
+            <div class="flow-label">🇺🇸 US · ZH</div>
+            <div class="flow-phases" id="phases-us-model-zh"></div>
+            <div class="flow-debug-toggle" data-slot="us-model-zh" onclick="toggleDebug('us-model-zh')">⏺</div>
           </div>
-          <div class="stream-phases" id="phases-us-model-zh"></div>
+          <div class="stream-debug" id="debug-us-model-zh"></div>
           <div class="stream-result" id="result-us-model-zh" style="display:none;"></div>
         </div>
 
+        <!-- CN Model · English -->
         <div class="stream-row" id="stream-cn-model-en">
-          <div class="stream-header">
-            <span class="stream-label">🇨🇳 CN Model · English</span>
-            <span class="stream-status" id="status-cn-model-en">Waiting...</span>
+          <div class="stream-flowchart">
+            <div class="flow-label">🇨🇳 CN · EN</div>
+            <div class="flow-phases" id="phases-cn-model-en"></div>
+            <div class="flow-debug-toggle" data-slot="cn-model-en" onclick="toggleDebug('cn-model-en')">⏺</div>
           </div>
-          <div class="stream-phases" id="phases-cn-model-en"></div>
+          <div class="stream-debug" id="debug-cn-model-en"></div>
           <div class="stream-result" id="result-cn-model-en" style="display:none;"></div>
         </div>
 
+        <!-- CN Model · 中文 -->
         <div class="stream-row" id="stream-cn-model-zh">
-          <div class="stream-header">
-            <span class="stream-label">🇨🇳 CN Model · 中文</span>
-            <span class="stream-status" id="status-cn-model-zh">Waiting...</span>
+          <div class="stream-flowchart">
+            <div class="flow-label">🇨🇳 CN · ZH</div>
+            <div class="flow-phases" id="phases-cn-model-zh"></div>
+            <div class="flow-debug-toggle" data-slot="cn-model-zh" onclick="toggleDebug('cn-model-zh')">⏺</div>
           </div>
-          <div class="stream-phases" id="phases-cn-model-zh"></div>
+          <div class="stream-debug" id="debug-cn-model-zh"></div>
           <div class="stream-result" id="result-cn-model-zh" style="display:none;"></div>
         </div>
       </div>
@@ -109,6 +118,6 @@
     </div>
   </div>
 
-  <script src="/script.js?v=3"></script>
+  <script src="/script.js?v=4"></script>
 </body>
 </html>

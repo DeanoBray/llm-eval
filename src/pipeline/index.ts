@@ -60,12 +60,12 @@ export class EvaluationPipeline {
     const streamPromises = ALL_SLOTS.map(async ({ slot, language, useZh }) => {
       const prompt = useZh ? scenario.chinese! : scenario.english;
 
-      // Emit initial state
+      // Emit initial state — prompt is ready (already translated by frontend)
       onProgress?.({
         slot,
         step: 'translating',
-        status: 'pending',
-        message: useZh ? '(Chinese prompt)' : '(English prompt)',
+        status: 'done',
+        message: useZh ? 'Chinese prompt ready' : 'English prompt ready',
       });
 
       const slotStart = Date.now();

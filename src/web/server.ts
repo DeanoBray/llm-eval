@@ -5,7 +5,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
 import { EvaluationPipeline } from '../pipeline';
 import { LLMClient, defaultConfig } from '../pipeline/llm-client';
-import type { Scenario, StreamProgress } from '../pipeline/types';
+import type { Scenario, StreamProgress, ModelSlot } from '../pipeline/types';
 
 const PORT = parseInt(process.env.PORT || '3007', 10);
 
@@ -83,6 +83,20 @@ wss.on('connection', (ws: WebSocket) => {
           }));
           return;
         }
+
+        console.log('Pipeline started:', scenario.english.slice(0, 60) + '...');
+
+        // Acknowledge receipt — each slot gets a "pipeline-started" event
+        const slots: ModelSlot[] = ['us-model-en', 'us-model-zh', 'cn-model-en', 'cn-model-zh'];
+        slots.forEach(slot => {
+          ws.send(JSON.stringify({
+            type: 'progress',
+            slot,
+            step: 'pipeline',
+            status: 'running',
+            message: 'Server received request — starting 4 parallel streams',
+          }));
+        });
 
         // Run pipeline — all 4 streams in parallel
         // Each progress event gets sent immediately to this client
