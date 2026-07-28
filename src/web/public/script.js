@@ -109,6 +109,7 @@ const translationHint = document.getElementById('translation-hint');
 const labelEn = document.getElementById('label-en');
 const labelZh = document.getElementById('label-zh');
 const autoBadge = document.getElementById('auto-badge');
+const autoBadgeEn = document.getElementById('auto-badge-en');
 const jobStatusBanner = document.getElementById('job-status-banner');
 
 // === Landing Page ===
@@ -157,20 +158,23 @@ async function translateText(text) {
     translationHint.textContent = '';
     // Reset labels to defaults
     if (labelEn) labelEn.textContent = 'Input (English)';
+    if (autoBadgeEn) autoBadgeEn.style.display = 'none';
     if (labelZh) {
       labelZh.childNodes[0].textContent = 'Translation (Chinese) ';
-      if (autoBadge) autoBadge.textContent = 'auto';
+      if (autoBadge) { autoBadge.textContent = 'auto'; autoBadge.style.display = ''; }
     }
     runBtn.disabled = false;
     return;
   }
   // Detect if user typed Chinese — reverse the translation direction
   if (CHINESE_REGEX.test(text)) {
-    // Swap labels: top is Chinese input, bottom is English translation
+    // Swap labels: top is English translation, bottom is Chinese input
+    // Show badge on the top box — that's where the translated text goes
     if (labelEn) labelEn.textContent = 'English Translation';
+    if (autoBadgeEn) { autoBadgeEn.textContent = 'translated from Chinese'; autoBadgeEn.style.display = ''; }
     if (labelZh) {
       labelZh.childNodes[0].textContent = 'Input (Chinese) ';
-      if (autoBadge) autoBadge.textContent = 'translated from Chinese';
+      if (autoBadge) autoBadge.style.display = 'none';
     }
     translationHint.textContent = 'Translating Chinese → English...';
     runBtn.disabled = true;
@@ -198,11 +202,12 @@ async function translateText(text) {
     return;
   }
   // Normal flow: English → Chinese
-  // Reset labels to defaults
+  // Reset labels to defaults — badge on bottom (Chinese translation)
   if (labelEn) labelEn.textContent = 'Input (English)';
+  if (autoBadgeEn) autoBadgeEn.style.display = 'none';
   if (labelZh) {
     labelZh.childNodes[0].textContent = 'Translation (Chinese) ';
-    if (autoBadge) autoBadge.textContent = 'auto';
+    if (autoBadge) { autoBadge.textContent = 'auto'; autoBadge.style.display = ''; }
   }
   translationHint.textContent = 'Translating...';
   runBtn.disabled = true;
