@@ -15,23 +15,29 @@ export interface LLMConfig {
   mockMode: boolean;
 }
 
-/** Default config using oMLX on Mímir */
+/** Default config using oMLX on Mímir (tunneled via AU server) */
 export function defaultConfig(): LLMConfig {
   const baseURL = process.env.OMLX_URL || 'http://localhost:21434';
   const apiKey = process.env.OMLX_API_KEY || 'lmm-api-key';
+
+  // CN model: Qwen 3.6 35B — Chinese origin, strong performer
+  const cnModel = process.env.CN_MODEL || 'Qwen3.6-35B-A3B-Uncensored-Heretic-MLX-8bit';
 
   const qwenBackend: LLMBackendConfig = {
     name: 'qwen',
     baseURL: `${baseURL}/v1`,
     apiKey,
-    model: 'qwen3.6-35b-a3b',
+    model: cnModel,
   };
+
+  // US model: to be replaced with Llama 3.3 70B once downloaded via oMLX GUI
+  const usModel = process.env.US_MODEL || cnModel; // fallback to Qwen until US model is available
 
   const usBackend: LLMBackendConfig = {
     name: 'us-model',
     baseURL: `${baseURL}/v1`,
     apiKey,
-    model: process.env.US_MODEL || 'qwen3.6-35b-a3b', // TODO: replace with actual US model
+    model: usModel,
   };
 
   return {
