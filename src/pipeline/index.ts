@@ -5,15 +5,23 @@ import { FactExtractor } from './fact-extractor';
 import { FactVerifier } from './fact-verifier';
 import { BiasAggregator } from './aggregator';
 import type {
-  Scenario, ModelResponse, SlotResult, PipelineProgress,
-  PipelineResult, ModelSlot, PipelineStep,
+  Scenario, ModelResponse, SlotResult, StreamProgress,
+  PipelineResult, ModelSlot, Fact,
 } from './types';
 
-export type ProgressCallback = (progress: PipelineProgress) => void;
+export type ProgressCallback = (progress: StreamProgress) => void;
+
+const ALL_SLOTS: { slot: ModelSlot; language: 'en' | 'zh'; useZh: boolean }[] = [
+  { slot: 'us-model-en', language: 'en', useZh: false },
+  { slot: 'us-model-zh', language: 'zh', useZh: true },
+  { slot: 'cn-model-en', language: 'en', useZh: false },
+  { slot: 'cn-model-zh', language: 'zh', useZh: true },
+];
 
 /**
  * Pipeline Orchestrator: runs the full evaluation pipeline.
- * Emits progress events for real-time visualization.
+ * Each of the 4 model/language slots runs as an independent parallel stream.
+ * Streams that detect refusal short-circuit past fact extraction & verification.
  */
 export class EvaluationPipeline {
   private llm: LLMClient;
@@ -32,79 +40,138 @@ export class EvaluationPipeline {
     this.aggregator = new BiasAggregator();
   }
 
+  /** Standalone English→Chinese translation exposed for the frontend */
+  async translateToChinese(text: string): Promise<string> {
+    return this.translator.enToZh(text);
+  }
+
+  /**
+   * Run all 4 slots in parallel.
+   * Scenario must already have both english and chinese set
+   * (translation happens on the frontend before pipeline submission).
+   */
   async run(scenario: Scenario, onProgress?: ProgressCallback): Promise<PipelineResult> {
     const startTime = Date.now();
-    const emit = (step: PipelineStep, status: PipelineProgress['status'], message: string, result?: any) => {
-      onProgress?.({ step, status, message, result });
-    };
-
-    // Step 1: Translate
-    emit('translating', 'running', 'Translating scenario...');
-    const translated = await this.translator.translateScenario(scenario);
-    emit('translating', 'done', 'Translation complete', { chinese: translated.chinese });
-
-    // Step 2: Query all 4 model slots
-    const slots: { slot: ModelSlot; language: 'en' | 'zh'; prompt: string; step: PipelineStep }[] = [
-      { slot: 'us-model-en', language: 'en', prompt: translated.english, step: 'querying-us-en' },
-      { slot: 'us-model-zh', language: 'zh', prompt: translated.chinese!, step: 'querying-us-zh' },
-      { slot: 'cn-model-en', language: 'en', prompt: translated.english, step: 'querying-cn-en' },
-      { slot: 'cn-model-zh', language: 'zh', prompt: translated.chinese!, step: 'querying-cn-zh' },
-    ];
 
     const responses: ModelResponse[] = [];
-    for (const s of slots) {
-      emit(s.step, 'running', `Querying ${s.slot}...`);
-      const response = await this.llm.query(s.slot, s.prompt);
-      responses.push({ model: s.slot, language: s.language, response });
-      emit(s.step, 'done', `Response received from ${s.slot}`);
-    }
-
-    // Step 3: Detect refusals
-    emit('detecting-refusals', 'running', 'Detecting refusals...');
     const slotResults: SlotResult[] = [];
-    for (const resp of responses) {
-      const refusal = this.refusalDetector.detect(resp.response, resp.language);
-      slotResults.push({
-        slot: resp.model,
-        refusal,
-        facts: null,
-        factVerifications: null,
-        biasIndicators: [],
-        overallBiasScore: 0,
+
+    // Run all 4 streams in parallel
+    const streamPromises = ALL_SLOTS.map(async ({ slot, language, useZh }) => {
+      const prompt = useZh ? scenario.chinese! : scenario.english;
+
+      // Emit initial state
+      onProgress?.({
+        slot,
+        step: 'translating',
+        status: 'pending',
+        message: useZh ? '(Chinese prompt)' : '(English prompt)',
       });
-    }
-    emit('detecting-refusals', 'done', `Refusal detection complete`);
 
-    // Step 4: Extract facts from non-refusal responses
-    emit('extracting-facts', 'running', 'Extracting facts...');
-    for (const sr of slotResults) {
-      if (!sr.refusal.isRefusal) {
-        const resp = responses.find(r => r.model === sr.slot)!;
-        sr.facts = await this.factExtractor.extract(resp.response, sr.slot);
+      const slotStart = Date.now();
+
+      // Step 1: Query
+      onProgress?.({ slot, step: 'querying', status: 'running', message: 'Querying model...' });
+      let response: string;
+      try {
+        response = await this.llm.query(slot, prompt);
+      } catch (err: any) {
+        onProgress?.({
+          slot,
+          step: 'querying',
+          status: 'error',
+          message: `Query failed: ${err.message}`,
+        });
+        const errorResult: SlotResult = {
+          slot, refusal: { isRefusal: true, confidence: 1, reason: `Query error: ${err.message}` },
+          facts: null, factVerifications: null, biasIndicators: [], overallBiasScore: 0,
+          duration: Date.now() - slotStart,
+        };
+        return { response: '', result: errorResult };
       }
-    }
-    const totalFacts = slotResults.reduce((sum, sr) => sum + (sr.facts?.length || 0), 0);
-    emit('extracting-facts', 'done', `Extracted ${totalFacts} facts`);
+      onProgress?.({ slot, step: 'querying', status: 'done', message: 'Response received' });
 
-    // Step 5: Verify facts
-    emit('verifying-facts', 'running', 'Verifying facts...');
-    for (const sr of slotResults) {
-      if (sr.facts && sr.facts.length > 0) {
-        sr.factVerifications = await this.factVerifier.verifyBatch(sr.facts);
+      // Step 2: Detect refusal
+      onProgress?.({ slot, step: 'detecting-refusal', status: 'running', message: 'Checking for refusal...' });
+      const refusal = this.refusalDetector.detect(response, language);
+      if (refusal.isRefusal) {
+        onProgress?.({
+          slot,
+          step: 'detecting-refusal',
+          status: 'done',
+          message: `Refusal detected (${(refusal.confidence * 100).toFixed(0)}% confidence)`,
+        });
+        // Short-circuit: skip fact extraction and verification
+        const refusalResult = this.aggregator.analyze({
+          slot, refusal, facts: null, factVerifications: null,
+          biasIndicators: [], overallBiasScore: 0,
+          duration: Date.now() - slotStart,
+        });
+        onProgress?.({
+          slot, step: 'done', status: 'done',
+          message: `Completed — bias score: ${(refusalResult.overallBiasScore * 100).toFixed(0)}%`,
+          result: refusalResult,
+        });
+        return { response, result: refusalResult };
       }
-    }
-    emit('verifying-facts', 'done', 'Fact verification complete');
+      onProgress?.({ slot, step: 'detecting-refusal', status: 'done', message: 'No refusal — proceeding' });
 
-    // Step 6: Score bias
-    emit('scoring-bias', 'running', 'Scoring bias indicators...');
-    for (const sr of slotResults) {
-      this.aggregator.analyze(sr);
+      // Step 3: Extract facts
+      onProgress?.({ slot, step: 'extracting-facts', status: 'running', message: 'Extracting atomic facts...' });
+      let facts: Fact[] = [];
+      try {
+        facts = await this.factExtractor.extract(response, slot);
+      } catch (err: any) {
+        onProgress?.({ slot, step: 'extracting-facts', status: 'error', message: `Extraction failed: ${err.message}` });
+        facts = [];
+      }
+      onProgress?.({ slot, step: 'extracting-facts', status: 'done', message: `${facts.length} facts extracted` });
+
+      // Step 4: Verify facts
+      let verifications = null;
+      if (facts.length > 0) {
+        onProgress?.({ slot, step: 'verifying-facts', status: 'running', message: 'Verifying facts...' });
+        try {
+          verifications = await this.factVerifier.verifyBatch(facts);
+        } catch (err: any) {
+          onProgress?.({ slot, step: 'verifying-facts', status: 'error', message: `Verification failed: ${err.message}` });
+        }
+        if (verifications) {
+          const accurate = verifications.filter(v => v.accurate).length;
+          onProgress?.({ slot, step: 'verifying-facts', status: 'done', message: `${accurate}/${verifications.length} accurate` });
+        }
+      } else {
+        onProgress?.({ slot, step: 'verifying-facts', status: 'done', message: 'No facts to verify' });
+      }
+
+      // Step 5: Score bias
+      onProgress?.({ slot, step: 'scoring-bias', status: 'running', message: 'Computing bias score...' });
+      const slotResult = this.aggregator.analyze({
+        slot, refusal, facts, factVerifications: verifications,
+        biasIndicators: [], overallBiasScore: 0,
+        duration: Date.now() - slotStart,
+      });
+      onProgress?.({
+        slot, step: 'done', status: 'done',
+        message: `Completed — bias score: ${(slotResult.overallBiasScore * 100).toFixed(0)}%`,
+        result: slotResult,
+      });
+
+      return { response, result: slotResult };
+    });
+
+    const streamOutcomes = await Promise.all(streamPromises);
+
+    for (const outcome of streamOutcomes) {
+      responses.push({
+        model: outcome.result.slot,
+        language: outcome.result.slot.endsWith('-zh') ? 'zh' : 'en',
+        response: outcome.response,
+      });
+      slotResults.push(outcome.result);
     }
-    emit('scoring-bias', 'done', 'Bias scoring complete');
 
     const duration = Date.now() - startTime;
-    emit('done', 'done', `Pipeline complete in ${(duration / 1000).toFixed(1)}s`);
-
-    return { scenario: translated, responses, slotResults, duration };
+    return { scenario, responses, slotResults, duration };
   }
 }

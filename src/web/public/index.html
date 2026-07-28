@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LLM Eval — Bias Evaluation Pipeline</title>
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/style.css?v=3">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -26,10 +26,6 @@
           sensitive topics — in both English and Mandarin — measuring refusal rates, factual accuracy,
           and framing bias.
         </p>
-        <p>
-          Enter a scenario below to see the evaluation pipeline in action. Your input will be
-          automatically translated, fed to four model-language combinations, and analyzed for bias.
-        </p>
       </section>
 
       <section class="input-section">
@@ -45,15 +41,14 @@
         <div class="input-group">
           <label for="scenario-zh">
             Chinese Translation
-            <span class="auto-badge">auto-generated</span>
+            <span class="auto-badge">auto-translated</span>
           </label>
           <textarea
             id="scenario-zh"
             rows="3"
             placeholder="Translation will appear here automatically..."
-            readonly
           ></textarea>
-          <p class="hint">Translation is generated automatically by the pipeline. You can edit it if needed.</p>
+          <p class="hint" id="translation-hint">Translating...</p>
         </div>
         <button id="run-btn" class="btn-primary">Run Evaluation</button>
       </section>
@@ -64,31 +59,56 @@
       <header class="compact">
         <button id="back-btn" class="btn-back">← Back</button>
         <h1>Pipeline Execution</h1>
+        <span id="pipeline-timer" class="timer"></span>
       </header>
 
-      <div class="pipeline-layout">
-        <!-- Flowchart -->
-        <div class="flowchart" id="flowchart">
-          <!-- Populated by JS -->
+      <!-- 4-Row Parallel Pipeline Display -->
+      <div class="streams-container">
+        <div class="stream-row" id="stream-us-en">
+          <div class="stream-header">
+            <span class="stream-label">🇺🇸 US Model · English</span>
+            <span class="stream-status" id="status-us-en">Waiting...</span>
+          </div>
+          <div class="stream-phases" id="phases-us-en"></div>
+          <div class="stream-result" id="result-us-en" style="display:none;"></div>
         </div>
 
-        <!-- Results panel -->
-        <div class="results-panel" id="results-panel">
-          <h2>Results</h2>
-          <div id="results-content">
-            <p class="placeholder">Pipeline results will appear here...</p>
+        <div class="stream-row" id="stream-us-zh">
+          <div class="stream-header">
+            <span class="stream-label">🇺🇸 US Model · 中文</span>
+            <span class="stream-status" id="status-us-zh">Waiting...</span>
           </div>
+          <div class="stream-phases" id="phases-us-zh"></div>
+          <div class="stream-result" id="result-us-zh" style="display:none;"></div>
+        </div>
+
+        <div class="stream-row" id="stream-cn-en">
+          <div class="stream-header">
+            <span class="stream-label">🇨🇳 CN Model · English</span>
+            <span class="stream-status" id="status-cn-en">Waiting...</span>
+          </div>
+          <div class="stream-phases" id="phases-cn-en"></div>
+          <div class="stream-result" id="result-cn-en" style="display:none;"></div>
+        </div>
+
+        <div class="stream-row" id="stream-cn-zh">
+          <div class="stream-header">
+            <span class="stream-label">🇨🇳 CN Model · 中文</span>
+            <span class="stream-status" id="status-cn-zh">Waiting...</span>
+          </div>
+          <div class="stream-phases" id="phases-cn-zh"></div>
+          <div class="stream-result" id="result-cn-zh" style="display:none;"></div>
         </div>
       </div>
 
-      <!-- Grid summary -->
-      <section class="summary-grid" id="summary-grid" style="display:none;">
-        <h2>Bias Summary</h2>
-        <div class="grid" id="bias-grid"></div>
+      <!-- Aggregated Visualization (shown when all 4 complete) -->
+      <section class="aggregate-section" id="aggregate-section" style="display:none;">
+        <h2>Bias Score Comparison</h2>
+        <div class="aggregate-chart" id="aggregate-chart"></div>
       </section>
     </div>
   </div>
 
-  <script src="/script.js?v=2"></script>
+  <script src="/script.js?v=3"></script>
 </body>
 </html>

@@ -1,9 +1,13 @@
 // === llm-eval Frontend ===
 
-// Defer translation by 1 second after user stops typing
+// Defer translation by 800ms after user stops typing
 let translationTimer = null;
 let ws = null;
 let isRunning = false;
+let runningSlots = new Set();
+let completedSlots = [];
+let pipelineStartTime = 0;
+let timerInterval = null;
 
 // === View Switching ===
 const landingView = document.getElementById('landing');
@@ -12,219 +16,372 @@ const runBtn = document.getElementById('run-btn');
 const backBtn = document.getElementById('back-btn');
 const enInput = document.getElementById('scenario-en');
 const zhInput = document.getElementById('scenario-zh');
+const translationHint = document.getElementById('translation-hint');
 
 backBtn.addEventListener('click', () => {
   landingView.classList.add('active');
   pipelineView.classList.remove('active');
   if (ws) { ws.close(); ws = null; }
   isRunning = false;
+  stopTimer();
 });
 
-// === Auto-translation ===
+// === Auto-Translation ===
+
+/**
+ * Translate EN text to ZH via the server's translation endpoint.
+ * Called on page load and on input change (debounced).
+ */
+async function translateText(text) {
+  if (!text || text.trim().length === 0) {
+    zhInput.value = '';
+    translationHint.textContent = '';
+    return;
+  }
+
+  // Check if text already contains Chinese characters
+  const CHINESE_REGEX = /[\u4e00-\u9fff]/;
+  if (CHINESE_REGEX.test(text)) {
+    translationHint.textContent = 'Text appears to contain Chinese characters — edit the translation as needed';
+    return;
+  }
+
+  translationHint.textContent = 'Translating...';
+  try {
+    const response = await fetch('/api/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    if (response.ok) {
+      const data = await response.json();
+      zhInput.value = data.translation;
+      translationHint.textContent = 'Translation ready';
+    } else {
+      translationHint.textContent = 'Translation unavailable (will translate during pipeline)';
+    }
+  } catch (err) {
+    translationHint.textContent = 'Translation unavailable — will translate during pipeline';
+  }
+}
+
+// Translate the default example on page load
+translateText(enInput.value.trim());
+
+// Debounced translation on English input change
+enInput.addEventListener('input', () => {
+  if (translationTimer) clearTimeout(translationTimer);
+  translationTimer = setTimeout(() => {
+    translateText(enInput.value.trim());
+  }, 800);
+});
+
+// === WebSocket ===
+
 function connectWebSocket() {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = protocol + '//' + location.host;
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => console.log('WebSocket connected');
-  ws.onclose = () => { ws = null; isRunning = false; };
+  ws.onclose = () => {
+    ws = null;
+    isRunning = false;
+    runBtn.disabled = false;
+  };
 
   ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
 
     if (data.type === 'progress') {
-      updateFlowchart(data);
+      updateStreamRow(data);
     } else if (data.type === 'result') {
-      displayResults(data.result);
-      isRunning = false;
-      runBtn.disabled = false;
+      handlePipelineComplete(data.result);
     } else if (data.type === 'error') {
-      showError(data.message);
+      handleError(data.message);
+    }
+  };
+}
+
+// === 4-Row Stream Display ===
+
+const SLOT_LABELS = {
+  'us-model-en': 'US · EN',
+  'us-model-zh': 'US · ZH',
+  'cn-model-en': 'CN · EN',
+  'cn-model-zh': 'CN · ZH',
+};
+
+const SLOT_FLAGS = {
+  'us-model-en': '🇺🇸',
+  'us-model-zh': '🇺🇸',
+  'cn-model-en': '🇨🇳',
+  'cn-model-zh': '🇨🇳',
+};
+
+// Build the phase indicators for each row
+function buildPhaseIndicators(slot) {
+  const phasesEl = document.getElementById('phases-' + slot);
+  const phases = [
+    { id: 'translating', label: 'Prompt' },
+    { id: 'querying', label: 'Query' },
+    { id: 'detecting-refusal', label: 'Refusal?' },
+    { id: 'extracting-facts', label: 'Extract' },
+    { id: 'verifying-facts', label: 'Verify' },
+    { id: 'scoring-bias', label: 'Score' },
+  ];
+
+  phasesEl.innerHTML = phases.map(p =>
+    `<div class="phase phase-${p.id}" id="phase-${slot}-${p.id}">
+      <span class="phase-icon">○</span>
+      <span class="phase-label">${p.label}</span>
+    </div>`
+  ).join('');
+}
+
+function setupStreamRows() {
+  ['us-model-en', 'us-model-zh', 'cn-model-en', 'cn-model-zh'].forEach(slot => {
+    buildPhaseIndicators(slot);
+    document.getElementById('status-' + slot).textContent = 'Waiting...';
+    document.getElementById('result-' + slot).style.display = 'none';
+    document.getElementById('result-' + slot).innerHTML = '';
+    // Reset all phases
+    const phasesEl = document.getElementById('phases-' + slot);
+    phasesEl.querySelectorAll('.phase').forEach(p => {
+      p.className = p.className.replace(/\s(running|done|error|skipped)/g, '');
+    });
+  });
+  document.getElementById('aggregate-section').style.display = 'none';
+  completedSlots = [];
+  runningSlots = new Set();
+}
+
+function updateStreamRow(progress) {
+  const slot = progress.slot;
+  const statusEl = document.getElementById('status-' + slot);
+  if (!statusEl) return;
+
+  // Update row status
+  if (progress.status === 'running') {
+    statusEl.innerHTML = '<span class="pulse-dot"></span> ' + progress.message;
+    runningSlots.add(slot);
+  } else if (progress.status === 'done') {
+    statusEl.textContent = progress.message;
+    runningSlots.delete(slot);
+  } else if (progress.status === 'error') {
+    statusEl.innerHTML = '<span class="err-icon">✗</span> ' + progress.message;
+    runningSlots.delete(slot);
+  }
+
+  // Update phase indicators
+  const phasesEl = document.getElementById('phases-' + slot);
+
+  // Mark current step as running
+  const currentPhase = document.getElementById('phase-' + slot + '-' + progress.step);
+  if (currentPhase) {
+    // First, mark previous non-done phases as running (for skipped phases)
+    const allPhases = phasesEl.querySelectorAll('.phase');
+    let foundCurrent = false;
+    allPhases.forEach(p => {
+      const phaseId = p.id.replace('phase-' + slot + '-', '');
+      // Mark phases before current as done if not already done
+    });
+
+    if (progress.status === 'running') {
+      currentPhase.classList.add('running');
+    } else if (progress.status === 'done') {
+      currentPhase.classList.remove('running');
+      currentPhase.classList.add('done');
+      const icon = currentPhase.querySelector('.phase-icon');
+      if (icon) icon.textContent = '✓';
+    } else if (progress.status === 'error') {
+      currentPhase.classList.remove('running');
+      currentPhase.classList.add('error');
+      const icon = currentPhase.querySelector('.phase-icon');
+      if (icon) icon.textContent = '✗';
+    }
+  }
+
+  // Handle refusal short-circuit: skip extract/verify phases
+  if (progress.step === 'detecting-refusal' && progress.status === 'done' && progress.message.includes('Refusal detected')) {
+    // Mark extracting-facts, verifying-facts as skipped
+    ['extracting-facts', 'verifying-facts'].forEach(step => {
+      const phaseEl = document.getElementById('phase-' + slot + '-' + step);
+      if (phaseEl) {
+        phaseEl.classList.add('skipped');
+      }
+    });
+  }
+
+  // If done with result, show it
+  if (progress.step === 'done' && progress.result) {
+    displaySlotResult(slot, progress.result);
+    completedSlots.push({ slot, result: progress.result });
+    runningSlots.delete(slot);
+
+    // If all 4 done, show aggregate
+    if (completedSlots.length === 4) {
+      showAggregate();
       isRunning = false;
       runBtn.disabled = false;
+      stopTimer();
     }
-  };
-}
-
-// === Pipeline Flowchart ===
-const flowchartSteps = [
-  { id: 'translating', label: 'Translation' },
-  { id: 'querying-us-en', label: 'US Model (English)' },
-  { id: 'querying-us-zh', label: 'US Model (Chinese)' },
-  { id: 'querying-cn-en', label: 'CN Model (English)' },
-  { id: 'querying-cn-zh', label: 'CN Model (Chinese)' },
-  { id: 'detecting-refusals', label: 'Detect Refusals' },
-  { id: 'extracting-facts', label: 'Extract Facts' },
-  { id: 'verifying-facts', label: 'Verify Facts' },
-  { id: 'scoring-bias', label: 'Score Bias' },
-];
-
-function buildFlowchart() {
-  const container = document.getElementById('flowchart');
-  container.innerHTML = '';
-
-  flowchartSteps.forEach((step, i) => {
-    if (i > 0) {
-      const conn = document.createElement('div');
-      conn.className = 'flow-connector';
-      conn.id = 'conn-' + step.id;
-      container.appendChild(conn);
-    }
-
-    const div = document.createElement('div');
-    div.className = 'flow-step';
-    div.id = 'step-' + step.id;
-    div.innerHTML =
-      '<span class="icon">○</span>' +
-      '<span class="label">' + step.label + '</span>' +
-      '<span class="detail"></span>';
-    container.appendChild(div);
-  });
-}
-
-function updateFlowchart(progress) {
-  const prevStep = getPrevStep(progress.step);
-  if (prevStep) {
-    markStep(prevStep, 'done', '✓');
-    const conn = document.getElementById('conn-' + progress.step);
-    if (conn) conn.classList.add('done');
-  }
-
-  if (progress.status === 'done') {
-    markStep(progress.step, 'done', '✓');
-  } else if (progress.status === 'error') {
-    markStep(progress.step, 'error', '✗');
-  } else {
-    markStep(progress.step, 'running', '●');
-  }
-
-  const stepEl = document.getElementById('step-' + progress.step);
-  if (stepEl) {
-    const detail = stepEl.querySelector('.detail');
-    if (detail) detail.textContent = progress.message || '';
   }
 }
 
-function markStep(stepId, status, icon) {
-  const el = document.getElementById('step-' + stepId);
-  if (!el) return;
-  el.className = 'flow-step ' + status;
-  const iconEl = el.querySelector('.icon');
-  if (iconEl) iconEl.textContent = icon;
-}
+function displaySlotResult(slot, result) {
+  const resultEl = document.getElementById('result-' + slot);
+  if (!resultEl) return;
 
-function getPrevStep(current) {
-  const idx = flowchartSteps.findIndex(s => s.id === current);
-  return idx > 0 ? flowchartSteps[idx - 1].id : null;
-}
+  const score = result.overallBiasScore || 0;
+  let scoreClass = 'low';
+  if (score > 0.5) scoreClass = 'high';
+  else if (score > 0.2) scoreClass = 'medium';
 
-// === Results Display ===
-function displayResults(result) {
-  const resultsContent = document.getElementById('results-content');
-  const responses = result.responses || [];
-  const slotResults = result.slotResults || [];
+  const refusal = result.refusal?.isRefusal;
+  const factCount = result.facts?.length || 0;
+  const verifications = result.factVerifications;
+  const accurateCount = verifications ? verifications.filter(v => v.accurate).length : 0;
+  const duration = result.duration ? (result.duration / 1000).toFixed(1) + 's' : '';
 
-  let html = '<p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:1rem">' +
-    'Duration: ' + (result.duration / 1000).toFixed(1) + 's</p>';
+  let html = '<div class="slot-result-card">';
 
-  slotResults.forEach((sr) => {
-    const resp = responses.find((r) => r.model === sr.slot);
-    const refusal = sr.refusal && sr.refusal.isRefusal;
-    const accuracyBadge = getAccuracyBadge(sr);
+  // Bias score prominently
+  html += '<div class="bias-score ' + scoreClass + '">';
+  html += '<span class="bias-value">' + (score * 100).toFixed(0) + '%</span>';
+  html += '<span class="bias-label">bias score</span>';
+  html += '</div>';
 
-    html += '<div class="result-card">' +
-      '<h3>' +
-        formatSlot(sr.slot) +
-        '<span class="badge ' + (refusal ? 'badge-refusal' : 'badge-response') + '">' +
-          (refusal ? 'REFUSAL' : 'RESPONSE') +
-        '</span>';
-
-    if (accuracyBadge) {
-      html += '<span class="badge ' + accuracyBadge.class + '">' + accuracyBadge.label + '</span>';
-    }
-
-    html += '</h3>';
-
-    if (refusal && sr.refusal.reason) {
-      html += '<p style="color:var(--text-muted);font-size:0.8rem">' + sr.refusal.reason + '</p>';
-    }
-
-    if (sr.facts) {
-      html += '<p style="font-size:0.8rem;margin-top:0.3rem">' + sr.facts.length + ' facts extracted</p>';
-    }
-
-    if (sr.biasIndicators && sr.biasIndicators.length > 0) {
-      html += '<div style="margin-top:0.5rem">';
-      sr.biasIndicators.forEach((bi) => {
-        html += '<div class="bias-indicator">' +
-          '<span class="bias-dim">' + bi.dimension + '</span>' +
-          '<span class="bias-dir ' + bi.severity + '">' + bi.severity + '</span>' +
-        '</div>';
-      });
-      html += '</div>';
-    }
-
-    html += '</div>';
-  });
-
-  resultsContent.innerHTML = html;
-  updateSummaryGrid(slotResults);
-}
-
-function getAccuracyBadge(sr) {
-  if (!sr.factVerifications || sr.factVerifications.length === 0) return null;
-  const accurate = sr.factVerifications.filter((v) => v.accurate).length;
-  const total = sr.factVerifications.length;
-  const rate = accurate / total;
-
-  if (rate >= 0.8) return { label: accurate + '/' + total + ' ACCURATE', class: 'badge-accurate' };
-  if (rate >= 0.5) return { label: accurate + '/' + total + ' PARTIAL', class: 'badge-partial' };
-  return { label: accurate + '/' + total + ' INACCURATE', class: 'badge-inaccurate' };
-}
-
-function updateSummaryGrid(slotResults) {
-  const grid = document.getElementById('summary-grid');
-  const gridDiv = document.getElementById('bias-grid');
-  grid.style.display = 'block';
-
-  gridDiv.innerHTML = slotResults.map((sr) => {
-    const score = sr.overallBiasScore;
-    let cls = 'low';
-    if (score > 0.5) cls = 'high';
-    else if (score > 0.2) cls = 'medium';
-
-    return '<div class="grid-card">' +
-      '<div class="slot-label">' + formatSlot(sr.slot) + '</div>' +
-      '<div class="score ' + cls + '">' + (score * 100).toFixed(0) + '%</div>' +
-      '<div style="font-size:0.7rem;color:var(--text-muted)">bias score</div>' +
+  // Key metrics
+  html += '<div class="slot-metrics">';
+  html += '<div class="metric">' +
+    '<span class="metric-value">' + (refusal ? 'REFUSED' : 'Answered') + '</span>' +
+    '<span class="metric-label">response</span>' +
     '</div>';
-  }).join('');
+  if (!refusal) {
+    html += '<div class="metric">' +
+      '<span class="metric-value">' + factCount + '</span>' +
+      '<span class="metric-label">facts</span>' +
+      '</div>';
+    if (verifications) {
+      html += '<div class="metric">' +
+        '<span class="metric-value">' + accurateCount + '/' + verifications.length + '</span>' +
+        '<span class="metric-label">accurate</span>' +
+        '</div>';
+    }
+  }
+  html += '<div class="metric">' +
+    '<span class="metric-value">' + duration + '</span>' +
+    '<span class="metric-label">time</span>' +
+    '</div>';
+  html += '</div>';
+
+  // Bias indicators
+  if (result.biasIndicators && result.biasIndicators.length > 0) {
+    html += '<div class="slot-indicators">';
+    result.biasIndicators.forEach(bi => {
+      html += '<div class="indicator-row">' +
+        '<span class="indicator-dim">' + bi.dimension + '</span>' +
+        '<span class="indicator-sev ' + bi.severity + '">' + bi.severity + '</span>' +
+        '</div>';
+    });
+    html += '</div>';
+  }
+
+  html += '</div>';
+  resultEl.innerHTML = html;
+  resultEl.style.display = 'block';
 }
 
-function formatSlot(slot) {
-  const labels = {
-    'us-model-en': 'US · EN',
-    'us-model-zh': 'US · ZH',
-    'cn-model-en': 'CN · EN',
-    'cn-model-zh': 'CN · ZH',
-  };
-  return labels[slot] || slot;
+// === Aggregated Visualization ===
+
+function showAggregate() {
+  const section = document.getElementById('aggregate-section');
+  section.style.display = 'block';
+
+  // Build an SVG bar chart comparing all 4
+  const sorted = [...completedSlots].sort((a, b) => b.result.overallBiasScore - a.result.overallBiasScore);
+  const maxScore = Math.max(...sorted.map(s => s.result.overallBiasScore), 0.01);
+
+  let svg = '';
+  sorted.forEach((item, i) => {
+    const score = item.result.overallBiasScore;
+    const pct = (score / maxScore * 100).toFixed(0);
+    const barColor = score > 0.5 ? 'var(--red)' : score > 0.2 ? 'var(--yellow)' : 'var(--green)';
+    const barWidth = Math.max(score * 100, 4); // minimum 4% for visibility
+
+    svg += '<div class="bar-row">' +
+      '<div class="bar-label">' + SLOT_FLAGS[item.slot] + ' ' + SLOT_LABELS[item.slot] + '</div>' +
+      '<div class="bar-track">' +
+        '<div class="bar-fill" style="width:' + barWidth + '%;background:' + barColor + ';"></div>' +
+        '<span class="bar-value">' + (score * 100).toFixed(0) + '%</span>' +
+      '</div>' +
+      '</div>';
+  });
+
+  document.getElementById('aggregate-chart').innerHTML = svg;
 }
 
-function showError(message) {
-  const resultsContent = document.getElementById('results-content');
-  resultsContent.innerHTML = '<div class="result-card" style="border-color:var(--red)">' +
-    '<h3 style="color:var(--red)">Error</h3>' +
-    '<p style="font-size:0.85rem">' + message + '</p>' +
-  '</div>';
+// === Pipeline Control ===
+
+function startTimer() {
+  pipelineStartTime = Date.now();
+  timerInterval = setInterval(() => {
+    const elapsed = ((Date.now() - pipelineStartTime) / 1000).toFixed(1);
+    document.getElementById('pipeline-timer').textContent = elapsed + 's';
+  }, 200);
+}
+
+function stopTimer() {
+  if (timerInterval) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+}
+
+function handlePipelineComplete(result) {
+  // Final result from server — each slot should already be displayed from progress events
+  // This is a safety net to ensure everything is in sync
+  if (result.slotResults) {
+    result.slotResults.forEach(sr => {
+      if (!completedSlots.find(s => s.slot === sr.slot)) {
+        displaySlotResult(sr.slot, sr);
+        completedSlots.push({ slot: sr.slot, result: sr });
+      }
+    });
+  }
+  if (completedSlots.length >= 4) {
+    showAggregate();
+  }
+  isRunning = false;
+  runBtn.disabled = false;
+  stopTimer();
+}
+
+function handleError(message) {
+  // Show error in all active rows
+  runningSlots.forEach(slot => {
+    const statusEl = document.getElementById('status-' + slot);
+    if (statusEl) {
+      statusEl.innerHTML = '<span class="err-icon">✗</span> Error: ' + message;
+    }
+  });
+  isRunning = false;
+  runBtn.disabled = false;
+  stopTimer();
 }
 
 // === Main Flow ===
+
 runBtn.addEventListener('click', () => {
   const english = enInput.value.trim();
   const chinese = zhInput.value.trim();
 
   if (!english) return;
+  if (!chinese) {
+    translationHint.textContent = 'Please wait for translation or enter Chinese text manually';
+    return;
+  }
 
   isRunning = true;
   runBtn.disabled = true;
@@ -232,10 +389,8 @@ runBtn.addEventListener('click', () => {
   landingView.classList.remove('active');
   pipelineView.classList.add('active');
 
-  buildFlowchart();
-  document.getElementById('results-content').innerHTML =
-    '<p class="placeholder">Running pipeline...</p>';
-  document.getElementById('summary-grid').style.display = 'none';
+  setupStreamRows();
+  startTimer();
 
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     connectWebSocket();
@@ -245,26 +400,12 @@ runBtn.addEventListener('click', () => {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({
         type: 'run-pipeline',
-        english: english,
-        chinese: chinese || undefined,
+        english,
+        chinese,
       }));
     } else {
       setTimeout(send, 100);
     }
   };
   send();
-});
-
-// === Auto-translation (debounced) ===
-const CHINESE_REGEX = /[\u4e00-\u9fff]/;
-
-enInput.addEventListener('input', () => {
-  const text = enInput.value.trim();
-  if (CHINESE_REGEX.test(text) && text.length > 0) return;
-
-  if (translationTimer) clearTimeout(translationTimer);
-  translationTimer = setTimeout(async () => {
-    if (!text) { zhInput.value = ''; return; }
-    zhInput.value = '[Translation will be generated during pipeline execution]';
-  }, 800);
 });

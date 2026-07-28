@@ -58,32 +58,33 @@ export interface SlotResult {
   factVerifications: FactVerification[] | null;
   biasIndicators: BiasIndicator[];
   overallBiasScore: number;      // 0-1, higher = more biased
+  duration: number;              // ms for this slot
 }
 
-/** Progress event sent via WebSocket during pipeline execution */
-export interface PipelineProgress {
-  step: PipelineStep;
+/** Per-stream pipeline step */
+export type StreamStep =
+  | 'translating'
+  | 'querying'
+  | 'detecting-refusal'
+  | 'extracting-facts'
+  | 'verifying-facts'
+  | 'scoring-bias'
+  | 'done'
+  | 'error';
+
+/** Progress event for a single slot stream */
+export interface StreamProgress {
+  slot: ModelSlot;
+  step: StreamStep;
   status: 'pending' | 'running' | 'done' | 'error';
   message: string;
   result?: any;
 }
-
-export type PipelineStep =
-  | 'translating'
-  | 'querying-us-en'
-  | 'querying-us-zh'
-  | 'querying-cn-en'
-  | 'querying-cn-zh'
-  | 'detecting-refusals'
-  | 'extracting-facts'
-  | 'verifying-facts'
-  | 'scoring-bias'
-  | 'done';
 
 /** Full pipeline result */
 export interface PipelineResult {
   scenario: Scenario;
   responses: ModelResponse[];
   slotResults: SlotResult[];
-  duration: number;     // ms
+  duration: number;     // ms — total wall clock
 }
