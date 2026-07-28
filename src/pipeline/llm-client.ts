@@ -1,4 +1,3 @@
-import OpenAI from 'openai';
 import type { ModelSlot } from './types';
 
 /** Configuration for a model backend */
@@ -51,25 +50,23 @@ export function defaultConfig(): LLMConfig {
   };
 }
 
-/** The LLM client — wraps OpenAI-compatible API (oMLX, cloud APIs) */
+/** Response from oMLX Anthropic-compatible messages API */
+interface OmlxMessageResponse {
+  content: Array<{ type: string; text?: string; thinking?: string }>;
+  stop_reason: string;
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+  };
+}
+
+/** The LLM client — uses oMLX's Anthropic-compatible /v1/messages endpoint
+ *  to get proper thinking/reasoning separation for Qwen MTP models. */
 export class LLMClient {
-  private clients: Map<string, OpenAI> = new Map();
   private config: LLMConfig;
 
   constructor(config?: LLMConfig) {
     this.config = config || defaultConfig();
-  }
-
-  private getClient(slot: ModelSlot): OpenAI {
-    const backend = this.config.backends[slot];
-    const key = backend.name;
-    if (!this.clients.has(key)) {
-      this.clients.set(key, new OpenAI({
-        baseURL: backend.baseURL,
-        apiKey: backend.apiKey,
-      }));
-    }
-    return this.clients.get(key)!;
   }
 
   /** Send a prompt to the specified model slot */
@@ -79,16 +76,38 @@ export class LLMClient {
     }
 
     const backend = this.config.backends[slot];
-    const client = this.getClient(slot);
 
-    const response = await client.chat.completions.create({
-      model: backend.model,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7,
-      max_tokens: 1024,
+    // Use oMLX's Anthropic-compatible messages API to disable thinking
+    const response = await fetch(`${backend.baseURL.replace(/\/v1$/, '')}/v1/messages`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${backend.apiKey}`,
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: backend.model,
+        max_tokens: 1024,
+        thinking: { type: 'disabled' },
+        messages: [{ role: 'user', content: prompt }],
+      }),
     });
 
-    return response.choices[0]?.message?.content || '';
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`oMLX API error ${response.status}: ${errText.slice(0, 200)}`);
+    }
+
+    const data = await response.json() as OmlxMessageResponse;
+
+    // Extract text content, skipping any thinking blocks
+    for (const block of data.content) {
+      if (block.type === 'text' && block.text) {
+        return block.text;
+      }
+    }
+
+    return '';
   }
 
   /** Mock responses for development without a running model */
