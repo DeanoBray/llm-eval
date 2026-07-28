@@ -186,6 +186,7 @@ export class JobManager {
       .filter(s => !memoryIds.has(s.id) && (s.status === 'completed' || s.status === 'error'))
       .map(s => ({
         id: s.id,
+        modelNames: s.modelNames,
         status: s.status as JobSummary['status'],
         scenarioSummary: s.english.slice(0, 80) + (s.english.length > 80 ? '...' : ''),
         queuePosition: 0,

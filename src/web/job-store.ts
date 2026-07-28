@@ -144,7 +144,8 @@ export interface JobSummary {
   english: string;
   createdAt: number;
   completedAt?: number;
-  slotCount: number; // how many slots have results
+  slotCount: number;
+  modelNames?: Record<string, string>;
 }
 
 export function listJobSummaries(limit = 50): JobSummary[] {
@@ -156,5 +157,6 @@ export function listJobSummaries(limit = 50): JobSummary[] {
     createdAt: j.createdAt,
     completedAt: j.completedAt,
     slotCount: j.slotResults?.length || 0,
+    modelNames: j.modelNames,
   }));
 }
