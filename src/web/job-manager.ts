@@ -2,6 +2,7 @@ import { WebSocket } from 'ws';
 import type { Scenario, StreamProgress, ModelSlot, SlotResult, PipelineResult } from '../pipeline/types';
 import { EvaluationPipeline } from '../pipeline';
 import { LLMClient } from '../pipeline/llm-client';
+import { saveJob, loadJob, listJobSummaries } from './job-store';
 
 const MAX_CONCURRENT = 3;
 
@@ -64,6 +65,38 @@ export class JobManager {
 
   constructor(llmClient?: LLMClient) {
     this.pipeline = new EvaluationPipeline(llmClient);
+    this.recoverJobIdCounter();
+  }
+
+  /** Recover nextJobId from existing persisted jobs */
+  private recoverJobIdCounter(): void {
+    const summaries = listJobSummaries(100);
+    let maxId = 0;
+    for (const s of summaries) {
+      const match = s.id.match(/^j(\d+)$/);
+      if (match) {
+        const n = parseInt(match[1], 10);
+        if (n > maxId) maxId = n;
+      }
+    }
+    if (maxId >= this.nextJobId) {
+      this.nextJobId = maxId + 1;
+    }
+  }
+
+  /** Persist job state to disk */
+  private persist(job: Job): void {
+    saveJob({
+      id: job.id,
+      status: job.status,
+      scenario: job.scenario,
+      events: job.events,
+      slotResults: job.slotResults,
+      createdAt: job.createdAt,
+      startedAt: job.startedAt,
+      completedAt: job.completedAt,
+      error: job.error,
+    });
   }
 
   /** Expose translation for the REST endpoint */
@@ -90,6 +123,7 @@ export class JobManager {
     this.jobs.set(id, job);
     this.queue.push(id);
 
+    this.persist(job);
     this.processQueue();
 
     return id;
@@ -120,6 +154,7 @@ export class JobManager {
     });
 
     const allJobs = [...this.jobs.values()];
+    const memoryIds = new Set(allJobs.map(j => j.id));
 
     const running: JobSummary[] = allJobs
       .filter(j => j.status === 'running')
@@ -131,9 +166,26 @@ export class JobManager {
       .map(summarize)
       .sort((a, b) => a.queuePosition - b.queuePosition);
 
-    const recent: JobSummary[] = allJobs
+    // Recent from memory
+    const recentFromMemory: JobSummary[] = allJobs
       .filter(j => j.status === 'completed' || j.status === 'error')
-      .map(summarize)
+      .map(summarize);
+
+    // Recent from disk (not already in memory)
+    const diskSummaries = listJobSummaries(50);
+    const recentFromDisk: JobSummary[] = diskSummaries
+      .filter(s => !memoryIds.has(s.id) && (s.status === 'completed' || s.status === 'error'))
+      .map(s => ({
+        id: s.id,
+        status: s.status as JobSummary['status'],
+        scenarioSummary: s.english.slice(0, 80) + (s.english.length > 80 ? '...' : ''),
+        queuePosition: 0,
+        createdAt: s.createdAt,
+        completedAt: s.completedAt,
+      }));
+
+    // Merge and sort by completion time, newest first, limit to 10
+    const recent = [...recentFromMemory, ...recentFromDisk]
       .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0))
       .slice(0, 10);
 
@@ -148,25 +200,41 @@ export class JobManager {
 
   getState(id: string): JobState | null {
     const job = this.jobs.get(id);
-    if (!job) return null;
+    if (job) {
+      // Recalculate queue position for queued jobs
+      let queuePosition = job.queuePosition;
+      if (job.status === 'queued') {
+        const idx = this.queue.indexOf(id);
+        queuePosition = idx >= 0 ? idx + 1 : job.queuePosition;
+      }
 
-    // Recalculate queue position for queued jobs
-    let queuePosition = job.queuePosition;
-    if (job.status === 'queued') {
-      const idx = this.queue.indexOf(id);
-      queuePosition = idx >= 0 ? idx + 1 : job.queuePosition;
+      return {
+        id: job.id,
+        status: job.status,
+        scenario: job.scenario,
+        queuePosition,
+        slotResults: job.slotResults,
+        createdAt: job.createdAt,
+        startedAt: job.startedAt,
+        completedAt: job.completedAt,
+        error: job.error,
+      };
     }
 
+    // Fall back to disk for completed/error jobs not in memory
+    const stored = loadJob(id);
+    if (!stored) return null;
+
     return {
-      id: job.id,
-      status: job.status,
-      scenario: job.scenario,
-      queuePosition,
-      slotResults: job.slotResults,
-      createdAt: job.createdAt,
-      startedAt: job.startedAt,
-      completedAt: job.completedAt,
-      error: job.error,
+      id: stored.id,
+      status: stored.status as JobState['status'],
+      scenario: stored.scenario,
+      queuePosition: 0,
+      slotResults: stored.slotResults as SlotResult[],
+      createdAt: stored.createdAt,
+      startedAt: stored.startedAt,
+      completedAt: stored.completedAt,
+      error: stored.error,
     };
   }
 
@@ -231,6 +299,7 @@ export class JobManager {
     job.startedAt = Date.now();
     job.queuePosition = 0;
     this.running.add(id);
+    this.persist(job);
 
     // Broadcast status change
     this.broadcast(id, {
@@ -257,6 +326,9 @@ export class JobManager {
       };
       job.events[progress.slot].push(stored);
 
+      // Persist periodically (every event during running)
+      this.persist(job);
+
       // Broadcast to subscribers
       this.broadcast(id, { type: 'progress', ...progress });
     }).then((result: PipelineResult) => {
@@ -264,6 +336,9 @@ export class JobManager {
       job.completedAt = Date.now();
       job.slotResults = result.slotResults;
       this.running.delete(id);
+
+      // Persist final state
+      this.persist(job);
 
       // Broadcast completion
       this.broadcast(id, { type: 'result', result });
@@ -275,6 +350,9 @@ export class JobManager {
       job.error = err.message;
       job.completedAt = Date.now();
       this.running.delete(id);
+
+      // Persist error state
+      this.persist(job);
 
       this.broadcast(id, {
         type: 'error',
