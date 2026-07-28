@@ -375,6 +375,7 @@ export class JobManager {
       job.status = 'completed';
       job.completedAt = Date.now();
       job.slotResults = result.slotResults;
+      job.modelNames = result.modelNames;
       this.running.delete(id);
 
       // Persist final state
