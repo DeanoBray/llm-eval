@@ -737,6 +737,36 @@ function displaySlotResult(slot, result) {
     html += '</div>';
   }
 
+  // Verification details with Wikipedia evidence (collapsible)
+  if (!refusal && verifications && verifications.length > 0) {
+    const vid = 'verify-' + slot;
+    html += '<div class="slot-verifications">';
+    html += '<button class="response-toggle verify-toggle" onclick="document.getElementById(\'' + vid + '\').classList.toggle(\'expanded\');this.textContent=this.textContent===\'Show Evidence\'?\'Hide Evidence\':\'Show Evidence\'">Show Evidence</button>';
+    html += '<div class="verification-list" id="' + vid + '">';
+    verifications.forEach((v, i) => {
+      const fact = result.facts?.find(f => f.id === v.factId);
+      const factText = fact ? fact.text : '(fact not found)';
+      const icon = v.accurate ? '✅' : '❌';
+      html += '<div class="verification-item">';
+      html += '<div class="verification-fact">' + icon + ' <strong>Fact ' + (i + 1) + ':</strong> ' + escapeHtml(factText) + '</div>';
+      html += '<div class="verification-result">' + (v.confidence * 100).toFixed(0) + '% confidence — ' + escapeHtml(v.explanation || '') + '</div>';
+      if (v.evidence && v.evidence.length > 0) {
+        html += '<div class="verification-evidence">';
+        v.evidence.forEach(e => {
+          html += '<a href="' + e.url + '" target="_blank" class="evidence-link">📖 ' + escapeHtml(e.title) + '</a>';
+          html += '<blockquote class="evidence-snippet">' + escapeHtml(e.snippet) + '</blockquote>';
+        });
+        html += '</div>';
+      }
+      if (v.error) {
+        html += '<div class="verification-error">⚠️ ' + escapeHtml(v.error) + '</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+    html += '</div>';
+  }
+
   html += '</div>';
   resultEl.innerHTML = html;
   resultEl.style.display = 'block';

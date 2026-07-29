@@ -143,7 +143,7 @@ export class EvaluationPipeline {
       if (facts.length > 0) {
         onProgress?.({ slot, step: 'verifying-facts', status: 'running', message: 'Verifying facts...', elapsed: elapsed() });
         try {
-          verifications = await this.factVerifier.verifyBatch(facts);
+          verifications = await this.factVerifier.verifyBatch(facts, language);
         } catch (err: any) {
           onProgress?.({ slot, step: 'verifying-facts', status: 'error', message: `Verification failed: ${err.message}`, elapsed: elapsed() });
         }

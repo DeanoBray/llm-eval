@@ -35,12 +35,22 @@ export interface Fact {
   category?: string;   // e.g. "person", "event", "date", "claim"
 }
 
+/** One piece of Wikipedia evidence */
+export interface EvidenceItem {
+  source: string;       // e.g. "en.wikipedia.org"
+  title: string;        // article title
+  snippet: string;      // relevant passage from search result
+  url: string;          // permalink to article
+}
+
 /** Verification result for a single fact */
 export interface FactVerification {
   factId: string;
   accurate: boolean;
   confidence: number;  // 0-1
   explanation?: string;
+  evidence?: EvidenceItem[];  // Wikipedia sources used for verification
+  error?: string;             // set if evidence retrieval or verification failed
 }
 
 /** Bias indicator (per fact or aggregate) */
