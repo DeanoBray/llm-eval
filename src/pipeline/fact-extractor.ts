@@ -61,7 +61,14 @@ ${response}
   }
 
   private parseFactResponse(text: string): Fact[] {
-    console.log(`[fact-extractor] RAW response (first 500 chars): ${text.slice(0, 500)}`);
+// Save raw response for debugging
+    const fs = require('fs');
+    const debugDir = process.env.DATA_DIR || 'data';
+    fs.mkdirSync(debugDir, { recursive: true });
+    const debugPath = `${debugDir}/extractor-debug-${Date.now()}.txt`;
+    fs.writeFileSync(debugPath, text, 'utf-8');
+    console.log(`[fact-extractor] Wrote ${text.length} chars to ${debugPath}`);
+
     try {
       // Strip markdown code fences if present
       let trimmed = text.trim();
@@ -77,16 +84,23 @@ ${response}
       if (jsonMatch) {
         const facts = JSON.parse(jsonMatch[0]);
         if (Array.isArray(facts)) {
-          return facts.map((f: any, i: number) => ({
+          const result = facts.map((f: any, i: number) => ({
             id: `fact-${i}`,
             text: f.text || f.content || '',
             category: f.category || 'claim',
           }));
+          console.log(`[fact-extractor] JSON SUCCESS: ${result.length} facts parsed`);
+          return result;
         }
+        console.warn(`[fact-extractor] JSON parsed but not an array: ${typeof facts}`);
+      } else {
+        console.warn(`[fact-extractor] No JSON array found in response`);
       }
     } catch (err: any) {
       console.warn(`[fact-extractor] JSON parse failed: ${err.message}. Raw: ${text.slice(0, 200)}...`);
     }
+
+    console.warn(`[fact-extractor] FALLBACK: using line-based extraction`);
 
     // Fallback: split by newlines and treat each as a fact.
     // Filter out lines that look like JSON syntax (start with [ { ] }).
