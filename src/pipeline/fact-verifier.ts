@@ -9,9 +9,10 @@ function cacheKey(query: string, language: 'en' | 'zh'): string {
 }
 
 /** Global rate limiter — Wikipedia asks for polite spacing between requests */
-let lastWikipediaRequest = 0;
+let lastWikipediaRequest = Date.now(); // seed so first requests are spread
 const WIKI_MIN_DELAY = 1000; // ms between requests (1 req/s — polite to Wikimedia)
 const WIKI_RETRY_DELAY = 10000; // backoff after 429 (10s)
+const WIKI_JITTER = 500; // random extra delay to prevent burst alignment
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -33,9 +34,10 @@ async function searchWikipedia(query: string, language: 'en' | 'zh'): Promise<Ev
   const host = language === 'en' ? 'en.wikipedia.org' : 'zh.wikipedia.org';
   const apiUrl = `https://${host}/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=3&origin=*`;
 
-  // Rate limit: ensure minimum gap between requests
+  // Rate limit with jitter: ensure minimum gap + random spread between requests
   const now = Date.now();
-  const wait = lastWikipediaRequest + WIKI_MIN_DELAY - now;
+  const jitter = Math.random() * WIKI_JITTER;
+  const wait = lastWikipediaRequest + WIKI_MIN_DELAY + jitter - now;
   if (wait > 0) await sleep(wait);
   lastWikipediaRequest = Date.now();
 
