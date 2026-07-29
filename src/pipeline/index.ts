@@ -63,7 +63,8 @@ export class EvaluationPipeline {
 
     // Run all 4 streams in parallel
     const streamPromises = ALL_SLOTS.map(async ({ slot, language, useZh }) => {
-      const prompt = useZh ? scenario.chinese! : scenario.english;
+      const raw = useZh ? scenario.chinese! : scenario.english;
+      const prompt = raw.length > 10_000 ? raw.slice(0, 10_000) : raw;
 
       const slotStart = Date.now();
       const elapsed = () => Date.now() - slotStart;
