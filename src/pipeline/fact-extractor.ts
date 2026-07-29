@@ -61,6 +61,7 @@ ${response}
   }
 
   private parseFactResponse(text: string): Fact[] {
+    console.log(`[fact-extractor] RAW response (first 500 chars): ${text.slice(0, 500)}`);
     try {
       // Strip markdown code fences if present
       let trimmed = text.trim();
