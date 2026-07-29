@@ -10,8 +10,8 @@ function cacheKey(query: string, language: 'en' | 'zh'): string {
 
 /** Global rate limiter — Wikipedia asks for polite spacing between requests */
 let lastWikipediaRequest = 0;
-const WIKI_MIN_DELAY = 200; // ms between requests (5 req/s max)
-const WIKI_RETRY_DELAY = 2000; // backoff after 429
+const WIKI_MIN_DELAY = 1000; // ms between requests (1 req/s — polite to Wikimedia)
+const WIKI_RETRY_DELAY = 10000; // backoff after 429 (10s)
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));

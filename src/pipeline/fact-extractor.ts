@@ -62,8 +62,16 @@ ${response}
 
   private parseFactResponse(text: string): Fact[] {
     try {
-      // Try to parse as JSON directly
-      const trimmed = text.trim();
+      // Strip markdown code fences if present
+      let trimmed = text.trim();
+      if (trimmed.startsWith('```')) {
+        const end = trimmed.lastIndexOf('```');
+        if (end > 3) {
+          trimmed = trimmed.slice(trimmed.indexOf('\n') + 1, end).trim();
+        }
+      }
+
+      // Match the entire JSON array — greedy, from first [ to last ]
       const jsonMatch = trimmed.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         const facts = JSON.parse(jsonMatch[0]);
@@ -75,15 +83,16 @@ ${response}
           }));
         }
       }
-    } catch {
-      // Fall back to simple line-based extraction
+    } catch (err: any) {
+      console.warn(`[fact-extractor] JSON parse failed: ${err.message}. Raw: ${text.slice(0, 200)}...`);
     }
 
-    // Fallback: split by newlines and treat each as a fact
+    // Fallback: split by newlines and treat each as a fact.
+    // Filter out lines that look like JSON syntax (start with [ { ] }).
     const lines = text
       .split('\n')
       .map(l => l.replace(/^[\d\-\*\•\.\s]+/, '').trim())
-      .filter(l => l.length > 10);
+      .filter(l => l.length > 10 && !/^[\[\]{},]/.test(l));
 
     return lines.map((line, i) => ({
       id: `fact-${i}`,
