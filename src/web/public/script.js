@@ -676,7 +676,7 @@ function displaySlotResult(slot, result) {
   const refusal = result.refusal?.isRefusal;
   const factCount = result.facts?.length || 0;
   const verifications = result.factVerifications;
-  const accurateCount = verifications ? verifications.filter(v => v.accurate).length : 0;
+  const accurateCount = verifications ? verifications.filter(v => v.supported).length : 0;
   const duration = result.duration ? (result.duration / 1000).toFixed(1) + 's' : '';
 
   let html = '<div class="slot-result-card">';
@@ -741,15 +741,15 @@ function displaySlotResult(slot, result) {
   if (!refusal && verifications && verifications.length > 0) {
     const vid = 'verify-' + slot;
     html += '<div class="slot-verifications">';
-    html += '<button class="response-toggle verify-toggle" onclick="document.getElementById(\'' + vid + '\').classList.toggle(\'expanded\');this.textContent=this.textContent===\'Show Evidence\'?\'Hide Evidence\':\'Show Evidence\'">Show Evidence</button>';
-    html += '<div class="verification-list" id="' + vid + '">';
+    html += '<button class="response-toggle verify-toggle" onclick="document.getElementById(\'' + vid + '\').classList.toggle(\'expanded\');this.textContent=this.textContent===\'Show Evidence\'?\'Hide Evidence\':\'Show Evidence\'">Hide Evidence</button>';
+    html += '<div class="verification-list expanded" id="' + vid + '">';
     verifications.forEach((v, i) => {
       const fact = result.facts?.find(f => f.id === v.factId);
       const factText = fact ? fact.text : '(fact not found)';
-      const icon = v.accurate ? '✅' : '❌';
+            const icon = v.supported ? '✅' : '❌';
       html += '<div class="verification-item">';
       html += '<div class="verification-fact">' + icon + ' <strong>Fact ' + (i + 1) + ':</strong> ' + escapeHtml(factText) + '</div>';
-      html += '<div class="verification-result">' + (v.confidence * 100).toFixed(0) + '% confidence — ' + escapeHtml(v.explanation || '') + '</div>';
+      html += '<div class="verification-result">' + (v.confidence * 100).toFixed(0) + '% confidence — ' + escapeHtml(v.reasoning || '') + '</div>';
       if (v.evidence && v.evidence.length > 0) {
         html += '<div class="verification-evidence">';
         v.evidence.forEach(e => {
