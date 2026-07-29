@@ -24,7 +24,8 @@ export class FactExtractor {
       : this.buildEnPrompt(response);
 
     // Use the dedicated judge model for extraction regardless of source model
-    const result = await this.llm.query('judge', prompt);
+    // Higher token limit — some model responses have many facts (27+)
+    const result = await this.llm.query('judge', prompt, 4096);
     return this.parseFactResponse(result);
   }
 
@@ -61,14 +62,6 @@ ${response}
   }
 
   private parseFactResponse(text: string): Fact[] {
-// Save raw response for debugging
-    const fs = require('fs');
-    const debugDir = process.env.DATA_DIR || 'data';
-    fs.mkdirSync(debugDir, { recursive: true });
-    const debugPath = `${debugDir}/extractor-debug-${Date.now()}.txt`;
-    fs.writeFileSync(debugPath, text, 'utf-8');
-    console.log(`[fact-extractor] Wrote ${text.length} chars to ${debugPath}`);
-
     try {
       // Strip markdown code fences if present
       let trimmed = text.trim();
@@ -84,31 +77,25 @@ ${response}
       if (jsonMatch) {
         const facts = JSON.parse(jsonMatch[0]);
         if (Array.isArray(facts)) {
-          const result = facts.map((f: any, i: number) => ({
+          return facts.map((f: any, i: number) => ({
             id: `fact-${i}`,
             text: f.text || f.content || '',
             category: f.category || 'claim',
           }));
-          console.log(`[fact-extractor] JSON SUCCESS: ${result.length} facts parsed`);
-          return result;
         }
-        console.warn(`[fact-extractor] JSON parsed but not an array: ${typeof facts}`);
-      } else {
-        console.warn(`[fact-extractor] No JSON array found in response`);
       }
     } catch (err: any) {
       console.warn(`[fact-extractor] JSON parse failed: ${err.message}. Raw: ${text.slice(0, 200)}...`);
     }
-
-    console.warn(`[fact-extractor] FALLBACK: using line-based extraction`);
 
     // Fallback: split by newlines and treat each as a fact.
     // Filter out lines that look like JSON syntax (start with [ { ] }).
     const lines = text
       .split('\n')
       .map(l => l.replace(/^[\d\-\*\•\.\s]+/, '').trim())
-      .filter(l => l.length > 10 && !/^[\[\]{},]/.test(l));
+      .filter(l => l.length > 10 && !/^[\[\]{},"]/.test(l));
 
+    console.warn(`[fact-extractor] FALLBACK: using line-based extraction (${lines.length} lines)`);
     return lines.map((line, i) => ({
       id: `fact-${i}`,
       text: line,

@@ -91,7 +91,7 @@ export class LLMClient {
   }
 
   /** Send a prompt to the specified model slot */
-  async query(slot: ModelSlot, prompt: string): Promise<string> {
+  async query(slot: ModelSlot, prompt: string, maxTokens: number = 1024): Promise<string> {
     if (this.config.mockMode) {
       return this.mockResponse(slot, prompt);
     }
@@ -108,7 +108,7 @@ export class LLMClient {
       },
       body: JSON.stringify({
         model: backend.model,
-        max_tokens: 1024,
+        max_tokens: maxTokens,
         thinking: { type: 'disabled' },
         messages: [{ role: 'user', content: prompt }],
       }),
