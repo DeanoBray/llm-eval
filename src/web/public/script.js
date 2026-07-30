@@ -658,9 +658,12 @@ function handleResult(result) {
     });
   }
 
+  console.log('[handleResult] slotResults:', result.slotResults?.length, 'aggregateSection:', aggregateSection);
   if (result.slotResults && result.slotResults.length >= 4) {
     aggregateSection.style.display = 'block';
     showAggregateChartFromResults(result.slotResults);
+  } else {
+    console.warn('[handleResult] not showing chart — slotResults length < 4');
   }
 }
 
@@ -775,6 +778,13 @@ function displaySlotResult(slot, result) {
 // === Aggregate Chart ===
 
 function showAggregateChartFromResults(slotResults) {
+  const chartEl = document.getElementById('aggregate-chart');
+  if (!chartEl) {
+    console.error('[chart] aggregate-chart element not found');
+    return;
+  }
+  console.log('[chart] rendering with', slotResults.length, 'results:', slotResults.map(s => s.slot + ':' + s.overallBiasScore));
+
   const FLAGS = {
     'us-model-en': '🇺🇸', 'us-model-zh': '🇺🇸',
     'cn-model-en': '🇨🇳', 'cn-model-zh': '🇨🇳',
