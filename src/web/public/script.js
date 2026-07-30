@@ -458,6 +458,7 @@ function handleWsMessage(data) {
   } else if (data.type === 'progress') {
     handleProgress(data);
   } else if (data.type === 'result') {
+    console.log('[ws] received result event. Keys:', Object.keys(data.result || {}), 'slotResults length:', data.result?.slotResults?.length);
     handleResult(data.result);
   } else if (data.type === 'error') {
     showJobError(data.message);
@@ -523,9 +524,12 @@ function handleJobSync(sync) {
   // Show any completed results
   if (sync.slotResults && sync.slotResults.length > 0) {
     sync.slotResults.forEach(sr => displaySlotResult(sr.slot, sr));
+    console.log('[handleJobSync] slotResults:', sync.slotResults.length, 'aggregateSection:', aggregateSection);
     if (sync.slotResults.length >= 4) {
       aggregateSection.style.display = 'block';
       showAggregateChartFromResults(sync.slotResults);
+    } else {
+      console.warn('[handleJobSync] not showing chart — slotResults length < 4');
     }
   }
 }
