@@ -196,18 +196,23 @@ async function fetchRelevantParagraphs(
   const host = language === 'en' ? 'en.wikipedia.org' : 'zh.wikipedia.org';
   const entityTitleSet = new Set(extraTitles.map(t => t.toLowerCase()));
 
-  // Build title→url map: entity titles first (they get priority), then search results
+  // Build title→url map from all sources. Order doesn't matter — paragraph-level
+  // relevance scoring (including 1.5x entity boost) determines which evidence wins.
   const titleToUrl = new Map<string, string>();
-  for (const t of extraTitles) {
-    titleToUrl.set(t, `https://${host}/wiki/${encodeURIComponent(t.replace(/ /g, '_'))}`);
-  }
   for (const r of searchResults) {
     if (!titleToUrl.has(r.title)) {
       titleToUrl.set(r.title, r.url);
     }
   }
+  // Entity titles go in AFTER search results so they supplement rather
+  // than crowd out text-search findings (which use full-body matching).
+  for (const t of extraTitles) {
+    if (!titleToUrl.has(t)) {
+      titleToUrl.set(t, `https://${host}/wiki/${encodeURIComponent(t.replace(/ /g, '_'))}`);
+    }
+  }
 
-  const allTitles = [...titleToUrl.keys()].slice(0, 5);
+  const allTitles = [...titleToUrl.keys()];
   if (allTitles.length === 0) return [];
 
   // Fetch full article text (no exintro limit — get body sections, not just lead)
@@ -610,10 +615,12 @@ ${factsJson}`;
    * Verify multiple facts in parallel (concurrency limited).
    *
    * Pipeline per fact:
-   * 1. Search Wikipedia with extracted query → candidate articles
-   * 2. Add entity titles from extraction → more candidates
-   * 3. Fetch FULL article text, score paragraphs by relevance → top 3 passages
-   * 4. Judge verifies claim against extracted passages
+   * 1. Full-text search (srwhat=text) with extracted query → candidate articles
+   * 2. Title search (srwhat=title) on extracted entity titles → supplements text results
+   * 3. Merge: text results first, entity results supplement (entity priority is at paragraph-level via 1.5x boost, not article-level)
+   * 4. Fetch FULL article text for ALL merged articles (no arbitrary cap — up to Wikipedia API limit of 50)
+   * 5. Score paragraphs by relevance with minimum overlap threshold → top 3 passages
+   * 6. Judge verifies claim against extracted passages
    */
   async verifyBatch(facts: Fact[], language: 'en' | 'zh' = 'en', concurrency = 3): Promise<FactVerification[]> {
     if (facts.length === 0) return [];
@@ -641,10 +648,12 @@ ${factsJson}`;
           entitySearchResults.push(...results);
         }
 
-        // Merge: deduplicate by title, entity searches + query search
+        // Merge: deduplicate by title. Text search results FIRST — they use
+        // full-article-body matching and are more likely to surface relevant evidence
+        // for analytical claims. Entity title search supplements rather than dominates.
         const seen = new Set<string>();
         const merged: EvidenceItem[] = [];
-        for (const r of [...entitySearchResults, ...searchResults]) {
+        for (const r of [...searchResults, ...entitySearchResults]) {
           if (!seen.has(r.title)) {
             seen.add(r.title);
             merged.push(r);
