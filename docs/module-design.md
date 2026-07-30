@@ -80,14 +80,89 @@ Decomposes a model response into atomic factual claims using structured LLM prom
 - Categories help downstream analysis: event, person, date, place, statistic, law-policy, claim
 
 ### 6. Fact Verifier (`fact-verifier.ts`)
-Checks extracted facts for accuracy using an LLM as judge. Each fact is verified independently with a confidence score.
+Checks extracted facts against Wikipedia as an external ground-truth source, rather than relying on the model's own knowledge.
+
+**Verification strategy evolution:**
+
+We went through five approaches before arriving at the current design. Each failed differently, and each failure revealed something about the nature of the problem.
+
+#### V0: Model-only verification (internal knowledge)
+*"Just ask the judge model if the fact is true."*
+
+**Why it failed:** Model knowledge is unreliable and self-reinforcing. A biased model produces biased facts AND biased verifications. There's no external anchor — the judge can "confirm" hallucinations or contradict true statements based on its own training bias. The evaluation becomes circular: we're measuring the model against itself.
+
+**Lesson:** Verification requires an external source of truth. Without one, bias detection is just bias amplification.
+
+#### V1: Wikipedia search snippets
+*"Search Wikipedia with the raw fact text, use snippets as evidence."*
+
+**Why it failed for two reasons:**
+1. Raw fact text makes a terrible search query. "China leaped over the credit card era to adopt QR-code-based mobile payments" contains too many words — Wikipedia's keyword search matches on incidental terms like "credit card" and "QR code" individually rather than the overall topic.
+2. Search snippets are ~160 characters. Even when the right article is found, the snippet is usually the article's opening sentence, which rarely contains the specific claim evidence. The evidence is in the body, not the intro.
+
+**Lesson:** Wikipedia search is keyword-based, not semantic. Long queries produce noise. Snippets are too short.
+
+#### V2: LLM query extraction
+*"Have the LLM extract optimized search queries."*
+
+One LLM call per slot extracts concise search queries from all facts. Better queries improved search quality somewhat.
+
+**Still failed:** We were still using short search snippets as evidence. Even with better search results, snippets didn't contain enough context for reliable judgment.
+
+**Lesson:** Better queries help FIND the right article, but don't help EXTRACT the right evidence from it.
+
+#### V3: Article intros (snippet expansion)
+*"Fetch full article introductions instead of search snippets."*
+
+Pulled full intro paragraphs (~1400 chars vs ~160 chars). Simple entity facts ("Alibaba is a Chinese company") verified perfectly.
+
+**Still failed:** Article intros summarize the topic but rarely contain the specific claim evidence. "High-speed rail in China" intro says what HSR is — not that "China started HSR development with foreign technology." That evidence is in the body's history section.
+
+**Lesson:** The evidence for specific claims lives in article body sections, not in introductory summaries.
+
+#### V4: Full article text + paragraph relevance scoring
+*"Fetch the whole article, score every paragraph, keep the best ones."*
+
+Fetched full article text (12,000 chars, covering body sections well beyond the intro), split into paragraphs, and used token-overlap scoring to find the paragraphs most relevant to each fact. Also added CJK bigram tokenization, which fixed a critical bug where Chinese facts got zero evidence because entire sentences were treated as single tokens.
+
+**Improvement:** When the right article was in the candidate set, specific claim evidence was found in body paragraphs.
+
+**Still failed in two ways:**
+1. **Noise from wrong articles:** Wikipedia's keyword search still returned completely unrelated articles that happened to share words. "Sonic the Hedgehog" matched "developed" for a claim about Chinese live-stream shopping. The relevance filter was `score > 0` — any paragraph with even ONE matching word passed.
+2. **Search query quality:** No amount of query optimization can fix Wikipedia's keyword search. The relevant evidence is inside entity articles like "Alibaba Group" or "Live streaming" — articles you get by searching for the entity, not the claim.
+
+**Lesson:** Wikipedia search is the wrong tool for finding evidence about analytical claims. The right approach is to identify the ENTITY the claim is about, fetch that entity's article, and find relevant passages within it.
+
+#### V5 (current): Entity-first + minimum overlap threshold
+*"Use LLM-extracted entity titles as the primary evidence source."*
+
+Three changes address the V4 failures:
+
+**Entity-first priority:** The LLM extracts Wikipedia article titles (e.g., "Mobile payments in China") alongside search queries. These entity articles are fetched first, and their paragraphs get a 1.5x score boost, ensuring the most relevant article always outranks noise — "Mobile payments in China" paragraphs score higher than "Beijing Subway" even when both share QR-related keywords.
+
+**Minimum overlap threshold:** Paragraphs must match at least 2 word tokens (or 3 CJK bigrams) to pass the relevance filter. Single-word matches like "Sonic the Hedgehog" matching "developed" are rejected.
+
+**Entity titles as search queries:** Entity titles are also searched as queries, surfacing related articles on the same topic.
+
+**Current limitations:**
+- Some facts are inherently unverifiable through Wikipedia. Comparative/editorial claims ("China created a cashless society more integrated than those in the U.S. or Europe") aren't stated directly in any Wikipedia article.
+- The judge model can still make errors when evidence is tangential.
+- Entity extraction quality depends on the LLM's knowledge of Wikipedia article titles.
+
+**Current architecture:**
+1. Extract search queries + entity article titles (1 LLM call per slot)
+2. Search Wikipedia with both extracted queries AND entity titles
+3. Merge + deduplicate search results
+4. Fetch FULL article text for all candidates (12,000 chars per article)
+5. Split into paragraphs, score relevance with minimum overlap threshold
+6. Entity-matched paragraphs get 1.5x score boost
+7. Feed top 3 paragraphs + fact to judge model for verification
 
 **Design decisions:**
-- Batch verification with configurable concurrency (default: 5) to balance speed vs rate limiting
-- Uses the US model in English for verification — provides a consistent baseline
-- Returns confidence scores, not just binary accurate/inaccurate. This is important because the aggregator uses confidence for bias scoring.
-
-**⚠️ Known limitation:** LLM-as-judge has known biases. The real pipeline should calibrate against human-evaluated samples. This module's interface is designed to accommodate that — verification results include `confidence` and `explanation` fields that can be replaced with human annotations.
+- Batch verification with configurable concurrency (default: 3) to balance speed vs rate limiting
+- Wikipedia is the external ground-truth source — no dependency on model knowledge for evidence
+- Paragraph-level extraction replaces snippet/intro-level evidence
+- Entity-first approach acknowledges that Wikipedia search is keyword-based, not semantic
 
 ### 7. Bias Aggregator (`aggregator.ts`)
 Combines refusal detection, fact verification, and response characteristics into bias indicators and an overall bias score.
