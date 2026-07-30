@@ -21,7 +21,6 @@ export class FactExtractor {
       : this.buildEnPrompt(response);
 
     const result = await this.llm.query('judge', prompt, 4096);
-    console.log(`[fact-extractor] judge response (${result.length} chars, first 500): ${result.slice(0, 500)}`);
     const facts = this.parseFactResponse(result);
     if (facts.length === 0 && result.length > 0) {
       console.warn(`[fact-extractor] ZERO facts parsed from ${result.length}-char judge response:\n${result.slice(0, 1000)}`);
@@ -83,7 +82,6 @@ ${response}
 
     const facts: Fact[] = [];
     const lines = trimmed.split('\n');
-    let fallbackLines: string[] = [];
 
     for (const line of lines) {
       const clean = line.trim();
@@ -103,22 +101,49 @@ ${response}
       } catch {
         // Not valid JSON on this line — might be free text or a partial line
       }
-
-      // Collect non-JSON lines for fallback
-      if (clean.length > 10 && !/^[\[\]{},"]/.test(clean)) {
-        fallbackLines.push(clean);
-      }
     }
 
     // If JSONL parsing produced facts, use them
     if (facts.length > 0) return facts;
 
-    // Fallback: treat non-JSON lines as plain-text facts
-    console.warn(`[fact-extractor] FALLBACK: using line-based extraction (${fallbackLines.length} lines)`);
-    return fallbackLines.map((line, i) => ({
-      id: `fact-${i}`,
-      text: line,
-      category: 'claim',
-    }));
+    // Fallback 1: try parsing entire response as JSON (judge sometimes returns
+    // pretty-printed array or object instead of JSONL)
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        const items = parsed.filter(
+          (item: unknown) => item && typeof item === 'object' && ((item as any).text || (item as any).content)
+        );
+        if (items.length > 0) {
+          return items.map((item: any, i: number) => ({
+            id: `fact-${i}`,
+            text: item.text || item.content || '',
+            category: item.category || 'claim',
+          }));
+        }
+      } else if (parsed && typeof parsed === 'object' && ((parsed as any).text || (parsed as any).content)) {
+        return [{
+          id: 'fact-0',
+          text: (parsed as any).text || (parsed as any).content || '',
+          category: (parsed as any).category || 'claim',
+        }];
+      }
+    } catch {
+      // Not valid aggregate JSON — fall through to line-based extraction
+    }
+
+    // Fallback 2: treat non-empty, non-structural lines as plain-text facts
+    const textLines = lines
+      .map(l => l.trim())
+      .filter(l => l.length > 10 && !/^[\[\]{},\s]*$/.test(l));
+    if (textLines.length > 0) {
+      return textLines.map((line, i) => ({
+        id: `fact-${i}`,
+        text: line,
+        category: 'claim',
+      }));
+    }
+
+    return [];
   }
 }
