@@ -19,8 +19,8 @@ export function defaultConfig(): LLMConfig {
   const baseURL = process.env.OMLX_URL || 'http://localhost:21434';
   const apiKey = process.env.OMLX_API_KEY || ''; // required; set in .env
 
-  // CN model: Qwen 3.6 35B — Chinese origin, strong performer
-  const cnModel = process.env.CN_MODEL || 'Qwen3.6-35B-A3B-Uncensored-Heretic-MLX-8bit';
+  // CN model: Qwen 3.6 27B 4-bit — Chinese origin, fast with MTP
+  const cnModel = process.env.CN_MODEL || 'Qwen3.6-27B-oQ4e-mtp';
 
   const qwenBackend: LLMBackendConfig = {
     name: 'qwen',
@@ -29,8 +29,8 @@ export function defaultConfig(): LLMConfig {
     model: cnModel,
   };
 
-  // US model: to be replaced with Llama 3.3 70B once downloaded via oMLX GUI
-  const usModel = process.env.US_MODEL || cnModel; // fallback to Qwen until US model is available
+  // US model: Gemma 4 31B 4-bit — Google's latest, strong English reasoning
+  const usModel = process.env.US_MODEL || 'gemma-4-31B-it-oQ4e';
 
   const usBackend: LLMBackendConfig = {
     name: 'us-model',

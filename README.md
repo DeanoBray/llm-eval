@@ -29,11 +29,11 @@ Configured via environment variables (see `.env`):
 
 | Variable | Default | Description |
 |---|---|---|
-| `LLM_BASE_URL` | `http://localhost:21434` | oMLX gateway |
-| `LLM_API_KEY` | *(required)* | oMLX gateway API key |
-| `CN_MODEL` | `Qwen3.6-35B-A3B-Uncensored-Heretic-MLX-8bit` | Chinese-origin model |
-| `US_MODEL` | (same as `CN_MODEL`) | US-origin model (fallback) |
-| `JUDGE_MODEL` | (same as `CN_MODEL`) | Fact checking model |
+| `OMLX_URL` | `http://localhost:21434` | oMLX gateway (tunneled from Mímir) |
+| `OMLX_API_KEY` | *(required)* | oMLX gateway API key |
+| `CN_MODEL` | `Qwen3.6-27B-oQ4e-mtp` | Chinese-origin model (Qwen 3.6 27B, 4-bit quantized) |
+| `US_MODEL` | `gemma-4-31B-it-oQ4e` | US-origin model (Gemma 4 31B, 4-bit quantized) |
+| `JUDGE_MODEL` | `Qwen3.6-35B-A3B-Uncensored-Heretic-MLX-8bit` | Fact extraction & verification (Qwen 3.6 35B, 8-bit quantized) |
 | `MOCK_MODE` | `false` | Return fake responses for testing |
 
 ## API
