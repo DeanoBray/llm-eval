@@ -100,6 +100,11 @@ export class EvaluationPipeline {
       }
       onProgress?.({ slot, step: 'querying', status: 'done', message: 'Response received', elapsed: elapsed() });
 
+      // Kick off async translation immediately — runs in parallel with pipeline stages
+      const translatePromise: Promise<string | { error: string }> = slot.endsWith('-zh')
+        ? this.translator.zhToEn(response).catch(err => ({ error: (err as Error).message || String(err) }))
+        : this.translator.enToZh(response).catch(err => ({ error: (err as Error).message || String(err) }));
+
       // Step 2: Detect refusal
       onProgress?.({ slot, step: 'detecting-refusal', status: 'running', message: 'Checking for refusal...', elapsed: elapsed() });
       const refusal = this.refusalDetector.detect(response, language);
@@ -118,6 +123,15 @@ export class EvaluationPipeline {
           duration: Date.now() - slotStart,
         });
         refusalResult.response = response;
+
+        // Await concurrent translation (kicked off after query)
+        const translateResult = await translatePromise;
+        if (typeof translateResult === 'string') {
+          refusalResult.translatedResponse = translateResult;
+        } else {
+          refusalResult.translationError = translateResult.error;
+        }
+
         onProgress?.({
           slot, step: 'done', status: 'done',
           message: `Completed — bias score: ${(refusalResult.overallBiasScore * 100).toFixed(0)}%`,
@@ -164,6 +178,15 @@ export class EvaluationPipeline {
         duration: Date.now() - slotStart,
       });
       slotResult.response = response;
+
+      // Await concurrent translation (kicked off after query)
+      const translateResult = await translatePromise;
+      if (typeof translateResult === 'string') {
+        slotResult.translatedResponse = translateResult;
+      } else {
+        slotResult.translationError = translateResult.error;
+      }
+
       onProgress?.({
         slot, step: 'done', status: 'done',
         message: `Completed — bias score: ${(slotResult.overallBiasScore * 100).toFixed(0)}%`,
@@ -175,54 +198,6 @@ export class EvaluationPipeline {
     });
 
     const streamOutcomes = await Promise.all(streamPromises);
-
-    // Translate outputs: EN responses → ZH, ZH responses → EN
-    const totalTranslations = streamOutcomes.length;
-    let translatedCount = 0;
-    onProgress?.({
-      slot: 'translation' as ModelSlot,
-      step: 'translating',
-      status: 'running',
-      message: `Translating outputs: 0/${totalTranslations}`,
-      elapsed: Date.now() - startTime,
-    });
-    const translationResults = await Promise.all(streamOutcomes.map(async (outcome) => {
-      const { slot } = outcome.result;
-      const { response } = outcome;
-      if (!response) {
-        translatedCount++;
-        return `${slot}: no response to translate`;
-      }
-      try {
-        if (slot.endsWith('-zh')) {
-          outcome.result.translatedResponse = await this.translator.zhToEn(response);
-        } else {
-          outcome.result.translatedResponse = await this.translator.enToZh(response);
-        }
-        translatedCount++;
-        onProgress?.({
-          slot: 'translation' as ModelSlot,
-          step: 'translating',
-          status: 'running',
-          message: `Translating outputs: ${translatedCount}/${totalTranslations}`,
-          elapsed: Date.now() - startTime,
-          translationSlot: slot,
-        });
-        return `${slot}: translated (${outcome.result.translatedResponse!.length} chars)`;
-      } catch (err: any) {
-        translatedCount++;
-        outcome.result.translationError = err.message || String(err);
-        console.error(`[pipeline] Translation failed for ${slot}:`, err.message);
-        return `${slot}: FAILED (${err.message})`;
-      }
-    }));
-    onProgress?.({
-      slot: 'translation' as ModelSlot,
-      step: 'translating',
-      status: 'done',
-      message: `Translating outputs: ${totalTranslations}/${totalTranslations} — complete`,
-      elapsed: Date.now() - startTime,
-    });
 
     for (const outcome of streamOutcomes) {
       responses.push({

@@ -584,37 +584,6 @@ function handleProgress(progress) {
   const status = progress.status;
   const message = progress.message;
 
-  // Translation progress card
-  if (slot === 'translation') {
-    const transBar = document.getElementById('translation-progress');
-    const transFill = document.getElementById('translation-progress-fill');
-    const transLabel = document.querySelector('.translation-progress-title');
-    if (status === 'running') {
-      transBar.style.display = 'flex';
-      const match = message.match(/(\d+)\/(\d+)/);
-      if (match) {
-        const current = parseInt(match[1], 10);
-        const total = parseInt(match[2], 10);
-        const pct = total > 0 ? (current / total) * 100 : 0;
-        transFill.style.width = pct + '%';
-        if (transLabel) transLabel.textContent = `Translating outputs: ${current} of ${total}`;
-      }
-      // Mark the completed slot as done
-      const ts = progress.translationSlot;
-      if (ts) {
-        const slotEl = document.getElementById('trans-slot-' + ts);
-        if (slotEl) slotEl.classList.add('done');
-      }
-    } else if (status === 'done') {
-      transFill.style.width = '100%';
-      if (transLabel) transLabel.textContent = 'Translations complete';
-      // Mark all slots done
-      document.querySelectorAll('.trans-slot').forEach(el => el.classList.add('done'));
-      setTimeout(() => { transBar.style.display = 'none'; }, 1500);
-    }
-    return;
-  }
-
   // Ignore sentinel pipeline messages (they don't map to a real slot)
   if (!ALL_SLOTS.includes(slot) && step === 'pipeline') {
     // This is a job-level message — update banner
