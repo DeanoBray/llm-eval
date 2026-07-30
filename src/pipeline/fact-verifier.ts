@@ -4,8 +4,8 @@ import type { Fact, FactVerification, EvidenceItem } from './types';
 /** Per-fact cache to avoid re-searching Wikipedia for duplicate facts across slots */
 const searchCache = new Map<string, EvidenceItem[]>();
 
-function cacheKey(query: string, language: 'en' | 'zh'): string {
-  return `${language}:${query}`;
+function cacheKey(query: string, language: 'en' | 'zh', mode: 'text' | 'title'): string {
+  return `${language}:${mode}:${query}`;
 }
 
 /** Global rate limiter — Wikipedia asks for polite spacing between requests */
@@ -121,14 +121,16 @@ function cjkBigramScore(paragraph: string, factText: string): number {
 }
 
 /** Search Wikipedia for evidence related to a claim.
- *  Rate-limited (1 req/s) with retry on 429 to be polite to Wikimedia. */
-async function searchWikipedia(query: string, language: 'en' | 'zh'): Promise<EvidenceItem[]> {
-  const key = cacheKey(query, language);
+ *  Rate-limited (1 req/s) with retry on 429 to be polite to Wikimedia.
+ *  @param mode - 'text' searches full article text (for analytical queries), 'title' searches page titles only (for entity lookups). Default 'text'. */
+async function searchWikipedia(query: string, language: 'en' | 'zh', mode: 'text' | 'title' = 'text'): Promise<EvidenceItem[]> {
+  const key = cacheKey(query, language, mode);
   const cached = searchCache.get(key);
   if (cached) return cached;
 
   const host = language === 'en' ? 'en.wikipedia.org' : 'zh.wikipedia.org';
-  const apiUrl = `https://${host}/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=5&origin=*`;
+  const srwhat = mode === 'title' ? '&srwhat=title' : '&srwhat=text';
+  const apiUrl = `https://${host}/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}${srwhat}&format=json&srlimit=5&origin=*`;
 
   // Rate limit with jitter: ensure minimum gap + random spread between requests
   await wikipediaRateLimit();
@@ -627,13 +629,15 @@ ${factsJson}`;
       const batchResults = await Promise.all(batch.map(async fact => {
         const info = queries[fact.id] || { query: fact.text.slice(0, 80), entities: [] };
 
-        // Search Wikipedia with extracted query
-        const searchResults = await searchWikipedia(info.query, language);
+        // Full-text search with extracted query — finds articles where claim
+        // keywords appear anywhere in body text, not just titles
+        const searchResults = await searchWikipedia(info.query, language, 'text');
 
-        // Also search using entity titles as queries — finds related articles on same topic
+        // Title search for entity titles — finds exact articles and near-title matches.
+        // Entity titles are specific article names, so title-mode is the right fit.
         const entitySearchResults: EvidenceItem[] = [];
         for (const entityTitle of info.entities) {
-          const results = await searchWikipedia(entityTitle, language);
+          const results = await searchWikipedia(entityTitle, language, 'title');
           entitySearchResults.push(...results);
         }
 
