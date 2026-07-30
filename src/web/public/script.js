@@ -676,7 +676,7 @@ function displaySlotResult(slot, result) {
   const refusal = result.refusal?.isRefusal;
   const factCount = result.facts?.length || 0;
   const verifications = result.factVerifications;
-  const accurateCount = verifications ? verifications.filter(v => v.supported).length : 0;
+  const accurateCount = verifications ? verifications.filter(v => v.accurate).length : 0;
   const duration = result.duration ? (result.duration / 1000).toFixed(1) + 's' : '';
 
   let html = '<div class="slot-result-card">';
@@ -746,10 +746,10 @@ function displaySlotResult(slot, result) {
     verifications.forEach((v, i) => {
       const fact = result.facts?.find(f => f.id === v.factId);
       const factText = fact ? fact.text : '(fact not found)';
-            const icon = v.supported ? '✅' : '❌';
+            const icon = v.accurate ? '✅' : '❌';
       html += '<div class="verification-item">';
       html += '<div class="verification-fact">' + icon + ' <strong>Fact ' + (i + 1) + ':</strong> ' + escapeHtml(factText) + '</div>';
-      html += '<div class="verification-result">' + (v.confidence * 100).toFixed(0) + '% confidence — ' + escapeHtml(v.reasoning || '') + '</div>';
+      html += '<div class="verification-result">' + (v.confidence * 100).toFixed(0) + '% confidence — ' + escapeHtml(v.explanation || '') + '</div>';
       if (v.evidence && v.evidence.length > 0) {
         html += '<div class="verification-evidence">';
         v.evidence.forEach(e => {
