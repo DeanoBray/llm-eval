@@ -41,6 +41,7 @@ export interface EvidenceItem {
   title: string;        // article title
   snippet: string;      // relevant passage from search result
   url: string;          // permalink to article
+  extract?: string;     // full article intro from Wikipedia extracts API (populated by expandEvidenceItems)
 }
 
 /** Verification result for a single fact */
