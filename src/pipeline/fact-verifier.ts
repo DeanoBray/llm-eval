@@ -636,9 +636,26 @@ ${factsJson}`;
       const batchResults = await Promise.all(batch.map(async fact => {
         const info = queries[fact.id] || { query: fact.text.slice(0, 80), entities: [] };
 
-        // Full-text search with extracted query — finds articles where claim
-        // keywords appear anywhere in body text, not just titles
-        const searchResults = await searchWikipedia(info.query, language, 'text');
+        // Build intitle: constraints from entity titles. For "China", this
+        // produces `intitle:China` — forcing text search results to have the
+        // entity in their title, eliminating off-topic keyword matches like
+        // "Gavin Newsom" or "António de Oliveira Salazar" for China claims.
+        const entityWords = new Set<string>();
+        for (const t of info.entities) {
+          for (const word of t.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2)) {
+            entityWords.add(word);
+          }
+        }
+        const intitleConstraint = [...entityWords].slice(0, 4)
+          .map(w => `intitle:${w}`).join(' ');
+
+        // Full-text search with intitle constraint — body-text matching PLUS
+        // entity must appear in the article title. Prevents keyword-only false
+        // matches while still searching full article body for claim terms.
+        const constrainedQuery = intitleConstraint
+          ? `${intitleConstraint} ${info.query}`
+          : info.query;
+        const searchResults = await searchWikipedia(constrainedQuery, language, 'text');
 
         // Title search for entity titles — finds exact articles and near-title matches.
         // Entity titles are specific article names, so title-mode is the right fit.
