@@ -96,23 +96,26 @@ function buildEvidencePrompt(fact: Fact, evidence: EvidenceItem[]): string {
     `[${i + 1}] ${e.title}\n    "${e.snippet}"\n    Source: ${e.url}`
   ).join('\n\n');
 
-  return `You are a fact-checker. Your task is to determine whether the provided Wikipedia evidence SUPPORTS or CONTRADICTS a given claim. Base your judgment ONLY on the evidence provided — do NOT rely on your own knowledge.
+  return `CRITICAL OUTPUT FORMAT:
+You MUST respond with exactly one JSON object and nothing else. No markdown fences, no
+explanatory text before or after, no wrapping in arrays or objects. The response will be
+parsed by a strict JSON parser — any extra text will cause parse failure.
+
+Respond with ONLY this compact JSON format:
+{"accurate": true, "confidence": 0.95, "explanation": "brief evidence-based explanation"}
+
+---
+
+You are a fact-checker. Determine whether the provided Wikipedia evidence SUPPORTS or
+CONTRADICTS the given claim. Base your judgment ONLY on the evidence provided — do NOT
+rely on your own knowledge.
 
 Claim: "${fact.text}"
 
 Wikipedia Evidence:
 ${evidenceText || '(no evidence found)'}
 
-If no evidence was found, set accurate to false and confidence to 0.0.
-
-Respond with a JSON object:
-{
-  "accurate": true or false,
-  "confidence": 0.0 to 1.0,
-  "explanation": "brief explanation connecting the evidence to the claim"
-}
-
-Return ONLY valid JSON.`;
+If no evidence was found, set accurate to false and confidence to 0.0.`;
 }
 
 /** Parse the judge model's JSON response */
