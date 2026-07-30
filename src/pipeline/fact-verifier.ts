@@ -581,9 +581,37 @@ ${factsJson}`;
 
     try {
       const result = await this.llm.query('judge', prompt, 512);
-      const match = result.match(/\{[\s\S]*\}/);
-      if (match) {
-        const parsed = JSON.parse(match[0]);
+      // Try multiple extraction strategies — LLMs sometimes wrap JSON in fences
+      // or include trailing commas that strict JSON.parse rejects.
+      let parsed: any = null;
+      const cleaned = result
+        .replace(/```(?:json)?\s*/g, '')  // strip markdown fences
+        .replace(/,\s*}/g, '}')            // fix trailing commas
+        .replace(/,\s*]/g, ']');           // fix trailing commas in arrays
+
+      // Try strict parse on cleaned text
+      for (const pattern of [/\{[\s\S]*\}/, /\{[^{}]*\{[\s\S]*\}[^{}]*\}/]) {
+        const match = cleaned.match(pattern);
+        if (match) {
+          try {
+            parsed = JSON.parse(match[0]);
+            break;
+          } catch {
+            // try next pattern
+          }
+        }
+      }
+
+      if (!parsed) {
+        // Last resort: try JSON5-style repair — replace unquoted values
+        const json5ish = cleaned.replace(/([{,]\s*)([a-zA-Z_]\w*)\s*:/g, '$1"$2":');
+        const match = json5ish.match(/\{[\s\S]*\}/);
+        if (match) {
+          try { parsed = JSON.parse(match[0]); } catch {}
+        }
+      }
+
+      if (parsed && typeof parsed === 'object') {
         // Validate all fact IDs and normalize
         const normalized: Record<string, { query: string; entities: string[] }> = {};
         for (const f of facts) {
@@ -684,17 +712,27 @@ ${factsJson}`;
           intitleConstraint = `intitle:${firstEntityWords.join('|')}`;
         }
 
-        // Text search with intitle OR constraint, falling back to unconstrained
-        // if the constraint kills all results.
+        // Text search with intitle OR constraint — high precision (only articles
+        // with entity in title), but some niche topics have oddly-named articles
+        // that slip through. Supplement with unconstrained search for coverage.
         const constrainedQuery = intitleConstraint
           ? `${intitleConstraint} ${info.query}`
           : info.query;
-        let searchResults = await searchWikipedia(constrainedQuery, language, 'text');
+        const constrainedResults = await searchWikipedia(constrainedQuery, language, 'text');
 
-        // Fallback: if intitle constraint returned < 3 results, try unconstrained
-        if (searchResults.length < 3 && intitleConstraint) {
-          console.log(`[verifier] intitle fallback for "${info.query.slice(0, 40)}" — ${searchResults.length} results -> unconstrained`);
-          searchResults = await searchWikipedia(info.query, language, 'text');
+        // Run unconstrained search as supplement — constrained results come first
+        // in the merge (higher precision), unconstrained fills gaps.
+        let searchResults = constrainedResults;
+        if (intitleConstraint) {
+          const unconstrainedResults = await searchWikipedia(info.query, language, 'text');
+          // Merge: constrained first (they're entity-gated), then unconstrained
+          const seen = new Set(constrainedResults.map(r => r.title));
+          for (const r of unconstrainedResults) {
+            if (!seen.has(r.title)) {
+              seen.add(r.title);
+              searchResults.push(r);
+            }
+          }
         }
 
         // Title search for entity titles — finds exact articles and near-title matches.
