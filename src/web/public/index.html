@@ -81,6 +81,15 @@
 
       <!-- Loading indicator -->
 
+
+      <!-- Translation progress bar (shown while output translation runs after slots complete) -->
+      <div id="translation-progress" class="translation-progress" style="display:none;">
+        <div class="translation-progress-bar">
+          <div class="translation-progress-fill" id="translation-progress-fill"></div>
+        </div>
+        <span class="translation-progress-label" id="translation-progress-label">Translating outputs…</span>
+      </div>
+
       <!-- Aggregated Visualization (shown when all 4 complete) — at the top -->
       <section class="aggregate-section" id="aggregate-section" style="display:none;">
         <h2>Bias Score Comparison</h2>

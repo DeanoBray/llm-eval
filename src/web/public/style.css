@@ -535,6 +535,39 @@ header.compact h1 { font-size: 1.4rem; }
   padding-bottom: 1rem;
   border-bottom: 1px solid var(--border);
 }
+/* Translation progress bar */
+.translation-progress {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1.25rem;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  animation: fadeIn 0.3s;
+}
+.translation-progress-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--surface2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.translation-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+  width: 0%;
+}
+.translation-progress-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 12em;
+}
+
 .aggregate-section {
   background: var(--surface);
   border: 1px solid var(--border);

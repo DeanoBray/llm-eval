@@ -584,6 +584,31 @@ function handleProgress(progress) {
   const status = progress.status;
   const message = progress.message;
 
+  // Translation progress bar
+  if (slot === 'translation') {
+    const transBar = document.getElementById('translation-progress');
+    const transFill = document.getElementById('translation-progress-fill');
+    const transLabel = document.getElementById('translation-progress-label');
+    if (status === 'running') {
+      transBar.style.display = 'flex';
+      const match = message.match(/(\d+)\/(\d+)/);
+      if (match) {
+        const current = parseInt(match[1], 10);
+        const total = parseInt(match[2], 10);
+        const pct = total > 0 ? (current / total) * 100 : 0;
+        transFill.style.width = pct + '%';
+        transLabel.textContent = `Translating outputs: ${current}/${total}`;
+      } else {
+        transLabel.textContent = message;
+      }
+    } else if (status === 'done') {
+      transFill.style.width = '100%';
+      transLabel.textContent = 'Translation complete';
+      setTimeout(() => { transBar.style.display = 'none'; }, 1500);
+    }
+    return;
+  }
+
   // Ignore sentinel pipeline messages (they don't map to a real slot)
   if (!ALL_SLOTS.includes(slot) && step === 'pipeline') {
     // This is a job-level message — update banner
@@ -835,6 +860,10 @@ function setupAllFlowcharts() {
     if (resultEl) { resultEl.style.display = 'none'; resultEl.innerHTML = ''; }
   });
   aggregateSection.style.display = 'none';
+  const transBar = document.getElementById('translation-progress');
+  if (transBar) { transBar.style.display = 'none'; }
+  const transFill = document.getElementById('translation-progress-fill');
+  if (transFill) { transFill.style.width = '0%'; }
   hideQueueBanner();
   pipelineStartTime = 0;
   stopTimer();
