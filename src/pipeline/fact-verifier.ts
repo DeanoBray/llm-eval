@@ -38,34 +38,59 @@ function stripHtml(html: string): string {
  *  - English: word-level tokens (split on whitespace/punctuation)
  *  - Chinese/Japanese: character bigrams (since CJK text lacks word boundaries,
  *    bigram overlap is the standard lightweight similarity metric)
- *  Returns 0-1. */
+ *  Returns 0-1, or 0 if below minimum overlap threshold (prevents single-word
+ *  false matches like "QR code" matching a Beijing Subway article). */
 function relevanceScore(paragraph: string, factText: string): number {
   const hasCJK = (s: string) => /[\u4e00-\u9fff\u3400-\u4dbf]/.test(s);
 
   if (hasCJK(factText) || hasCJK(paragraph)) {
-    return cjkBigramScore(paragraph, factText);
+    const score = cjkBigramScore(paragraph, factText);
+    // Require at least 3 bigram overlaps — single-phrase matches are noise
+    if (score > 0 && score * cjkBigramCount(factText) < 3) return 0;
+    return score;
   }
 
-  return wordTokenScore(paragraph, factText);
+  // Minimum 2-word overlap to filter out single-keyword false positives
+  // (e.g. "QR code" matching Beijing Subway but missing the topic entirely)
+  const { score, overlapCount } = wordTokenScoreWithCount(paragraph, factText);
+  if (overlapCount < 2) return 0;
+  return score;
 }
 
-/** Word-level token overlap for English text */
-function wordTokenScore(paragraph: string, factText: string): number {
+/** Count of bigrams in fact text (for minimum overlap check) */
+function cjkBigramCount(factText: string): number {
+  const chars = factText.replace(/[^\u4e00-\u9fff\u3400-\u4dbf]/g, '');
+  if (chars.length < 2) return 0;
+  const set = new Set<string>();
+  for (let i = 0; i < chars.length - 1; i++) {
+    set.add(chars.slice(i, i + 2));
+  }
+  return set.size;
+}
+
+/** Word-level token overlap for English text.
+ *  Returns both the ratio score AND the raw overlap count for minimum threshold checks. */
+function wordTokenScoreWithCount(paragraph: string, factText: string): { score: number; overlapCount: number } {
   const tokenize = (s: string) =>
     s.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length > 1);
 
   const factTokens = new Set(tokenize(factText));
-  if (factTokens.size === 0) return 0;
+  if (factTokens.size === 0) return { score: 0, overlapCount: 0 };
 
   const paraTokens = tokenize(paragraph);
-  if (paraTokens.length < 3) return 0;
+  if (paraTokens.length < 3) return { score: 0, overlapCount: 0 };
 
   let overlap = 0;
   for (const t of paraTokens) {
     if (factTokens.has(t)) overlap++;
   }
 
-  return overlap / factTokens.size;
+  return { score: overlap / factTokens.size, overlapCount: overlap };
+}
+
+/** Backward-compatible wrapper — used by cjkBigramScore for consistent return type */
+function wordTokenScore(paragraph: string, factText: string): number {
+  return wordTokenScoreWithCount(paragraph, factText).score;
 }
 
 /** Character bigram overlap for CJK text — the standard approach when word
@@ -158,7 +183,7 @@ async function searchWikipedia(query: string, language: 'en' | 'zh'): Promise<Ev
 }
 
 /** Fetch full article text for a set of titles and extract paragraphs most relevant to the fact.
- *  Replaces the old expandEvidenceItems (which only got article intros).
+ *  Entity titles (LLM-extracted) get a 1.5x score boost since they're the most likely correct sources.
  *  Scores every paragraph against the fact, keeps top 3. */
 async function fetchRelevantParagraphs(
   searchResults: EvidenceItem[],
@@ -167,13 +192,16 @@ async function fetchRelevantParagraphs(
   language: 'en' | 'zh',
 ): Promise<EvidenceItem[]> {
   const host = language === 'en' ? 'en.wikipedia.org' : 'zh.wikipedia.org';
+  const entityTitleSet = new Set(extraTitles.map(t => t.toLowerCase()));
 
-  // Build title→url map from search results, add entity titles with constructed URLs
+  // Build title→url map: entity titles first (they get priority), then search results
   const titleToUrl = new Map<string, string>();
-  for (const r of searchResults) titleToUrl.set(r.title, r.url);
   for (const t of extraTitles) {
-    if (!titleToUrl.has(t)) {
-      titleToUrl.set(t, `https://${host}/wiki/${encodeURIComponent(t.replace(/ /g, '_'))}`);
+    titleToUrl.set(t, `https://${host}/wiki/${encodeURIComponent(t.replace(/ /g, '_'))}`);
+  }
+  for (const r of searchResults) {
+    if (!titleToUrl.has(r.title)) {
+      titleToUrl.set(r.title, r.url);
     }
   }
 
@@ -203,7 +231,6 @@ async function fetchRelevantParagraphs(
 
       if (!response.ok) {
         console.error(`[verifier] Wikipedia full-text HTTP ${response.status}`);
-        // Fall back to search snippets
         return searchResults.slice(0, 3);
       }
 
@@ -218,13 +245,18 @@ async function fetchRelevantParagraphs(
         const title: string = p.title;
         const text: string = p.extract || '';
         const url = titleToUrl.get(title) || '';
+        const isEntityMatch = entityTitleSet.has(title.toLowerCase());
 
-        // Split on paragraph breaks (double newlines, or single newlines after sentences)
+        // Split on paragraph breaks
         const paragraphs = text.split(/\n\n+/).filter(para => para.trim().length > 30);
 
         for (const para of paragraphs) {
-          const score = relevanceScore(para, factText);
+          let score = relevanceScore(para, factText);
           if (score > 0) {
+            // Boost entity-matched articles — they're LLM-selected as the most likely
+            // correct sources. A 1.5x boost ensures "Mobile payments in China" outranks
+            // "Beijing Subway" even when both share similar keyword overlap counts.
+            if (isEntityMatch) score *= 1.5;
             scored.push({ title, url, text: para.trim(), score });
           }
         }
@@ -343,11 +375,11 @@ export class FactVerifier {
       : 'English Wikipedia (en.wikipedia.org)';
 
     const prompt = `For each fact below, provide:
-1. A concise search query for ${langHint} (max 8 words, focus on key entities/events/concepts)
-2. 1-2 Wikipedia article titles most likely to contain evidence about this fact
+1. A short search query for ${langHint} — 3-5 keywords max, as if you were typing into Wikipedia's search box. Strip filler words. Focus on the core subject, not every detail. Example: "QR code mobile payments China" not "China leaped over credit card era to adopt QR code based mobile payments"
+2. 1-2 exact Wikipedia article titles most likely to contain evidence about this fact. These should be real article names, not made-up titles. Example: "Mobile payments in China" not "Chinese QR code leapfrogging"
 
 Return ONLY a JSON object mapping fact IDs:
-{"fact-1": {"query": "search terms here", "entities": ["Article Title 1", "Article Title 2"]}, ...}
+{"fact-1": {"query": "short keywords here", "entities": ["Exact Article Title"]}, ...}
 
 Facts:
 ${factsJson}`;
@@ -434,7 +466,7 @@ ${factsJson}`;
     // Step 1: Extract search queries + entity titles for all facts (single LLM call)
     const queries = await this.extractSearchQueries(facts, language);
 
-    // Step 2: Search → full-text paragraph extraction → judge verification in parallel batches
+    // Step 2: Search with query + entity titles → full-text paragraph extraction → verify in parallel batches
     const results: FactVerification[] = [];
 
     for (let i = 0; i < facts.length; i += concurrency) {
@@ -445,8 +477,25 @@ ${factsJson}`;
         // Search Wikipedia with extracted query
         const searchResults = await searchWikipedia(info.query, language);
 
-        // Fetch full article text for candidates + entity titles, extract top 3 paragraphs
-        const evidence = await fetchRelevantParagraphs(searchResults, info.entities, fact.text, language);
+        // Also search using entity titles as queries — finds related articles on same topic
+        const entitySearchResults: EvidenceItem[] = [];
+        for (const entityTitle of info.entities) {
+          const results = await searchWikipedia(entityTitle, language);
+          entitySearchResults.push(...results);
+        }
+
+        // Merge: deduplicate by title, entity searches + query search
+        const seen = new Set<string>();
+        const merged: EvidenceItem[] = [];
+        for (const r of [...entitySearchResults, ...searchResults]) {
+          if (!seen.has(r.title)) {
+            seen.add(r.title);
+            merged.push(r);
+          }
+        }
+
+        // Fetch full article text for all candidates + entity titles, extract top 3 paragraphs
+        const evidence = await fetchRelevantParagraphs(merged, info.entities, fact.text, language);
 
         return this.verifyWithEvidence(fact, evidence);
       }));
