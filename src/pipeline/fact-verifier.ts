@@ -340,19 +340,172 @@ function parseVerificationResponse(factId: string, text: string): { accurate: bo
 }
 
 /**
- * Fact Verifier: checks facts against Wikipedia evidence rather than model knowledge.
+ * Fact Verifier: evidence-based claim verification against Wikipedia.
  *
- * Architecture:
- * 1. Extract Wikipedia search queries + entity article titles from facts (1 LLM call per slot)
- * 2. Search Wikipedia with extracted queries (5 results per fact)
- * 3. Fetch FULL article text for candidate articles, score paragraphs by relevance to fact
- * 4. Keep top 3 most relevant paragraphs as evidence
- * 5. Feed the fact + targeted evidence to the judge model for verification
+ * ============================================================
+ * EVOLUTION OF THE VERIFICATION STRATEGY
+ * ============================================================
  *
- * Key improvement over v1: instead of article intros (which often lack specific claim evidence),
- * we pull full article body text and extract the paragraphs most relevant to each fact.
- * This catches evidence buried in article body sections and filters out unrelated search results
- * (e.g., "Sonic the Hedgehog" for a claim about Chinese e-commerce).
+ * We've iterated through five approaches. Each failed in a different way, and each
+ * failure taught us something about the nature of the problem.
+ *
+ * ────────────────────────────────────────────────────────────
+ * V0: MODEL-ONLY VERIFICATION (internal knowledge)
+ * ────────────────────────────────────────────────────────────
+ * "Just ask the judge model if the fact is true."
+ *
+ * We asked the judge model to verify facts using only its own internal knowledge.
+ *
+ * FAILED BECAUSE: Model knowledge is unreliable and self-reinforcing. A biased model
+ * produces biased facts AND biased verifications. There's no external anchor —
+ * the judge can "confirm" hallucinations, agree with propaganda, or contradict
+ * true statements based on its own training bias. The entire evaluation becomes
+ * circular: we're measuring the model against itself.
+ *
+ * LESSON: Verification requires an EXTERNAL source of truth. Without one, bias
+ * detection is just bias amplification.
+ *
+ * ────────────────────────────────────────────────────────────
+ * V1: WIKIPEDIA SEARCH SNIPPETS
+ * ────────────────────────────────────────────────────────────
+ * "Search Wikipedia with the raw fact text, use snippets as evidence."
+ *
+ * We searched Wikipedia using the fact text directly as a query, then fed the
+ * search result snippets (~160 chars each) to the judge as evidence.
+ *
+ * FAILED FOR TWO REASONS:
+ * 1. Raw fact text makes a terrible search query. "China leaped over the credit
+ *    card era to adopt QR-code-based mobile payments" contains too many words,
+ *    and Wikipedia's keyword search matches on incidental terms like "credit card"
+ *    and "QR code" individually rather than the overall topic.
+ * 2. Search snippets are only ~160 characters. Even when the RIGHT article is
+ *    found, the snippet is usually the article's opening sentence — which almost
+ *    never contains the specific detail needed to verify the claim. The evidence
+ *    is in the article BODY, not the intro.
+ *
+ * LESSON: Wikipedia's search API is keyword-based, not semantic. Long queries
+ * produce noise, not precision. And snippets are too short to be useful.
+ *
+ * ────────────────────────────────────────────────────────────
+ * V2: LLM QUERY EXTRACTION
+ * ────────────────────────────────────────────────────────────
+ * "Have the judge extract optimized search queries from the facts."
+ *
+ * One LLM call per slot extracted concise search queries from all facts. Instead
+ * of searching with the raw fact text, we searched with queries like "QR code
+ * mobile payments China" — shorter and more targeted.
+ *
+ * IMPROVEMENT: Better queries improved search result quality somewhat.
+ *
+ * STILL FAILED: We were still using short search snippets as evidence. Even with
+ * better search results, the snippets didn't contain enough context for the judge
+ * to make a reliable determination. Facts about "Alibaba innovating in logistics"
+ * would find the Alibaba article but the snippet would just say "Alibaba Group is
+ * a Chinese multinational technology company..." — no mention of logistics innovation.
+ *
+ * LESSON: Better queries help FIND the right article, but don't help EXTRACT
+ * the right evidence from it.
+ *
+ * ────────────────────────────────────────────────────────────
+ * V3: SNIPPET EXPANSION (article intros)
+ * ────────────────────────────────────────────────────────────
+ * "Fetch full article introductions instead of using search snippets."
+ *
+ * After getting search results, we called Wikipedia's extracts API to pull full
+ * article intro paragraphs (~1400 chars, vs ~160 chars for search snippets).
+ *
+ * IMPROVEMENT: Longer text gave the judge more context. Simple entity facts
+ * like "Alibaba is a company in China" verified perfectly.
+ *
+ * STILL FAILED: Article INTROS summarize the topic but rarely contain the specific
+ * claim evidence. "High-speed rail in China" intro says what HSR is, not that
+ * "China started its HSR development with foreign technology." That evidence is
+ * buried in the article body's history section. The intro is the WRONG part of
+ * the article for fact-checking specific claims.
+ *
+ * LESSON: The evidence for specific claims lives in article BODY sections, not
+ * in introductory summaries.
+ *
+ * ────────────────────────────────────────────────────────────
+ * V4: FULL ARTICLE TEXT + PARAGRAPH RELEVANCE SCORING
+ * ────────────────────────────────────────────────────────────
+ * "Fetch the whole article, score every paragraph, keep the best ones."
+ *
+ * We fetched full article text (capped at 12,000 chars, covering body sections
+ * well beyond the intro) for each candidate, split into paragraphs, and used
+ * token-overlap scoring to find the paragraphs most relevant to each fact.
+ * This also added CJK bigram tokenization for Chinese text, which fixed a
+ * critical bug where Chinese facts got zero evidence because entire sentences
+ * were treated as single tokens.
+ *
+ * IMPROVEMENT: When the RIGHT article was in the candidate set, we could now
+ * find the specific paragraphs that addressed the claim. Entity facts verified
+ * well. Chinese text no longer had zero-evidence failures.
+ *
+ * STILL FAILED IN TWO WAYS:
+ * 1. NOISE FROM WRONG ARTICLES: Wikipedia's keyword search still returned
+ *    completely unrelated articles that happened to share words with the fact.
+ *    "Sonic the Hedgehog" for a claim about Chinese live-stream shopping
+ *    (matched "developed"), "Aral Sea" and "Anime" for a claim about Chinese
+ *    catch-up growth in the 1980s (matched "1980s"). Our relevance filter was
+ *    `score > 0` — any paragraph with even ONE matching word passed through.
+ *    The judge then had to evaluate these irrelevant passages and correctly
+ *    marked the claims as unverifiable, but the "evidence" displayed was garbage.
+ *
+ * 2. SEARCH QUERY QUALITY: The LLM-extracted queries still produced noise
+ *    because Wikipedia search is purely keyword-based. No amount of query
+ *    optimization can make "Chinese live-stream shopping innovation" match the
+ *    right articles when no article is TITLED that. The relevant evidence is
+ *    inside articles like "Alibaba Group" or "Live streaming" — articles you
+ *    get by searching for the ENTITY, not the claim.
+ *
+ * LESSON: Wikipedia search is the wrong tool for finding evidence about analytical
+ * claims. The right approach is to identify the ENTITY the claim is about, fetch
+ * that entity's article, and find relevant passages within it. Search should be
+ * a supplement, not the primary evidence source.
+ *
+ * ────────────────────────────────────────────────────────────
+ * V5 (CURRENT): ENTITY-FIRST + MINIMUM OVERLAP THRESHOLD
+ * ────────────────────────────────────────────────────────────
+ * "Use LLM-extracted entity titles as the PRIMARY evidence source."
+ *
+ * Three changes:
+ *
+ * 1. ENTITY-FIRST PRIORITY: The LLM now extracts Wikipedia article titles
+ *    (e.g., "Mobile payments in China") as well as search queries. These entity
+ *    articles are fetched FIRST and their paragraphs get a 1.5x score boost.
+ *    This ensures the most relevant article always outranks noise — "Mobile
+ *    payments in China" paragraphs score higher than "Beijing Subway" even
+ *    when both share QR-related keywords.
+ *
+ * 2. ENTITY TITLES AS SEARCH QUERIES: We also search Wikipedia using the entity
+ *    titles as queries, surfacing related articles on the same topic that the
+ *    keyword query alone misses.
+ *
+ * 3. MINIMUM OVERLAP THRESHOLD: Paragraphs must match at least 2 word tokens
+ *    (or 3 CJK bigrams) to pass the relevance filter. Single-keyword matches
+ *    like "Sonic the Hedgehog" matching "developed" are rejected. This
+ *    eliminates the most egregious false positives.
+ *
+ * 4. TIGHTER QUERY PROMPT: The LLM is prompted to produce 3-5 keyword queries
+ *    instead of 8-word phrases — shorter queries produce fewer incidental matches.
+ *
+ * REMAINING LIMITATIONS:
+ * - Some facts are inherently unverifiable through Wikipedia. "China created a
+ *   cashless society more integrated than those in the U.S. or Europe" is a
+ *   comparative/editorial claim — no Wikipedia article states this directly.
+ * - The judge model can still make errors when evidence is tangential.
+ * - Entity extraction quality depends on the LLM's knowledge of Wikipedia
+ *   article titles (sometimes extracts non-existent or wrong titles).
+ *
+ * CURRENT ARCHITECTURE:
+ * 1. Extract search queries + entity article titles (1 LLM call per slot)
+ * 2. Search Wikipedia with extracted queries AND entity titles
+ * 3. Merge + deduplicate search results
+ * 4. Fetch FULL article text for all candidates
+ * 5. Split into paragraphs, score relevance with min-overlap threshold
+ * 6. Entity-matched paragraphs get 1.5x score boost
+ * 7. Feed top 3 paragraphs + fact to judge model for verification
  */
 export class FactVerifier {
   private llm: LLMClient;
