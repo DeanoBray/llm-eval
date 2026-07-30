@@ -741,7 +741,7 @@ function displaySlotResult(slot, result) {
   if (!refusal && verifications && verifications.length > 0) {
     const vid = 'verify-' + slot;
     html += '<div class="slot-verifications">';
-    html += '<button class="response-toggle verify-toggle" onclick="document.getElementById(\'' + vid + '\').classList.toggle(\'expanded\');this.textContent=this.textContent===\'Show Evidence\'?\'Hide Evidence\':\'Show Evidence\'">Hide Evidence</button>';
+    html += '<button class="response-toggle verify-toggle" onclick="document.getElementById(\'' + vid + '\').classList.toggle(\'expanded\');this.textContent=this.textContent===\'Show Evidence\'?\'Hide Evidence\':\'Show Evidence\'">Show Evidence</button>';
     html += '<div class="verification-list expanded" id="' + vid + '">';
     verifications.forEach((v, i) => {
       const fact = result.facts?.find(f => f.id === v.factId);

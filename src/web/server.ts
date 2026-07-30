@@ -26,7 +26,7 @@ const app = express();
 app.use(express.json());
 
 // Static files — but NOT index.html (we serve it via routes)
-app.use(express.static(PUBLIC_DIR, { index: false }));
+app.use(express.static(PUBLIC_DIR, { index: false, maxAge: 0 }));
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
