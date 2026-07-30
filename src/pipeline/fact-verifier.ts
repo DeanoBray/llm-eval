@@ -50,10 +50,11 @@ function relevanceScore(paragraph: string, factText: string): number {
     return score;
   }
 
-  // Minimum 2-word overlap to filter out single-keyword false positives
-  // (e.g. "QR code" matching Beijing Subway but missing the topic entirely)
-  const { score, overlapCount } = wordTokenScoreWithCount(paragraph, factText);
-  if (overlapCount < 2) return 0;
+  // Minimum 2-OVERLAPPING-CONTENT-WORD overlap to filter out stopword-only
+  // matches. Previously "the", "in", "of", "a" counted, so a paragraph about
+  // "the economy in China" would pass against "the CCP in China" on just "the/in/China".
+  const { score, overlapCount, contentOverlapCount } = wordTokenScoreWithCount(paragraph, factText);
+  if (contentOverlapCount < 2) return 0;
   return score;
 }
 
@@ -68,24 +69,48 @@ function cjkBigramCount(factText: string): number {
   return set.size;
 }
 
+/** Stopwords that shouldn't count toward content relevance scores.
+ *  Without this filter, "the government in China" would match "the CCP in China"
+ *  with overlap ["the", "in", "china"] = 3, passing the 2-word minimum on noise alone. */
+const STOPWORDS = new Set([
+  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+  'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+  'should', 'may', 'might', 'can', 'shall', 'to', 'of', 'in', 'for',
+  'on', 'with', 'at', 'by', 'from', 'as', 'into', 'through', 'during',
+  'before', 'after', 'above', 'below', 'between', 'under', 'again',
+  'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why',
+  'how', 'all', 'both', 'each', 'few', 'more', 'most', 'other', 'some',
+  'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than',
+  'too', 'very', 'just', 'now', 'also', 'within', 'without', 'this',
+  'that', 'these', 'those', 'it', 'its', 'he', 'she', 'they', 'them',
+  'we', 'you', 'i', 'me', 'my', 'your', 'his', 'her', 'our', 'their',
+  'and', 'but', 'or', 'if', 'while', 'because', 'until', 'about',
+  'what', 'which', 'who', 'whom',
+]);
+
 /** Word-level token overlap for English text.
- *  Returns both the ratio score AND the raw overlap count for minimum threshold checks. */
-function wordTokenScoreWithCount(paragraph: string, factText: string): { score: number; overlapCount: number } {
+ *  Returns the ratio score, raw overlap count, AND content-word overlap count
+ *  (excluding stopwords) for minimum threshold checks. */
+function wordTokenScoreWithCount(paragraph: string, factText: string): { score: number; overlapCount: number; contentOverlapCount: number } {
   const tokenize = (s: string) =>
-    s.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length > 1);
+    s.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length > 1 && !STOPWORDS.has(t));
 
   const factTokens = new Set(tokenize(factText));
-  if (factTokens.size === 0) return { score: 0, overlapCount: 0 };
+  if (factTokens.size === 0) return { score: 0, overlapCount: 0, contentOverlapCount: 0 };
 
   const paraTokens = tokenize(paragraph);
-  if (paraTokens.length < 3) return { score: 0, overlapCount: 0 };
+  if (paraTokens.length < 3) return { score: 0, overlapCount: 0, contentOverlapCount: 0 };
 
   let overlap = 0;
+  let contentOverlap = 0;
   for (const t of paraTokens) {
-    if (factTokens.has(t)) overlap++;
+    if (factTokens.has(t)) {
+      overlap++;
+      contentOverlap++;
+    }
   }
 
-  return { score: overlap / factTokens.size, overlapCount: overlap };
+  return { score: overlap / factTokens.size, overlapCount: overlap, contentOverlapCount: contentOverlap };
 }
 
 /** Backward-compatible wrapper — used by cjkBigramScore for consistent return type */
@@ -269,10 +294,20 @@ async function fetchRelevantParagraphs(
         }
       }
 
-      // Sort by relevance, take top 3
+      // Sort by relevance, build top-3 with per-source diversity
       scored.sort((a, b) => b.score - a.score);
 
-      return scored.slice(0, 3).map(sp => ({
+      const top: { title: string; url: string; text: string; score: number }[] = [];
+      const sourceCounts = new Map<string, number>();
+      for (const sp of scored) {
+        const count = sourceCounts.get(sp.title) || 0;
+        if (count >= 2) continue; // max 2 paragraphs per article
+        sourceCounts.set(sp.title, count + 1);
+        top.push(sp);
+        if (top.length >= 3) break;
+      }
+
+      return top.map(sp => ({
         source: host,
         title: sp.title,
         snippet: sp.text.slice(0, 250),
@@ -636,26 +671,31 @@ ${factsJson}`;
       const batchResults = await Promise.all(batch.map(async fact => {
         const info = queries[fact.id] || { query: fact.text.slice(0, 80), entities: [] };
 
-        // Build intitle: constraints from entity titles. For "China", this
-        // produces `intitle:China` — forcing text search results to have the
-        // entity in their title, eliminating off-topic keyword matches like
-        // "Gavin Newsom" or "António de Oliveira Salazar" for China claims.
-        const entityWords = new Set<string>();
-        for (const t of info.entities) {
-          for (const word of t.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2)) {
-            entityWords.add(word);
-          }
+        // Build intitle: constraint using OR (not AND) from the first entity's
+        // main words. e.g., entity "Chinese Communist Party" → intitle:china|chinese|communist
+        // This forces returned articles to be ABOUT the entity (title match),
+        // but avoids the AND-logic trap where `intitle:china intitle:communist`
+        // only returns "Chinese Communist Party" and its sub-articles — missing
+        // "Politics of China", "Economy of China", etc.
+        let intitleConstraint = '';
+        const firstEntityWords = (info.entities[0] || '')
+          .toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2);
+        if (firstEntityWords.length > 0) {
+          intitleConstraint = `intitle:${firstEntityWords.join('|')}`;
         }
-        const intitleConstraint = [...entityWords].slice(0, 4)
-          .map(w => `intitle:${w}`).join(' ');
 
-        // Full-text search with intitle constraint — body-text matching PLUS
-        // entity must appear in the article title. Prevents keyword-only false
-        // matches while still searching full article body for claim terms.
+        // Text search with intitle OR constraint, falling back to unconstrained
+        // if the constraint kills all results.
         const constrainedQuery = intitleConstraint
           ? `${intitleConstraint} ${info.query}`
           : info.query;
-        const searchResults = await searchWikipedia(constrainedQuery, language, 'text');
+        let searchResults = await searchWikipedia(constrainedQuery, language, 'text');
+
+        // Fallback: if intitle constraint returned < 3 results, try unconstrained
+        if (searchResults.length < 3 && intitleConstraint) {
+          console.log(`[verifier] intitle fallback for "${info.query.slice(0, 40)}" — ${searchResults.length} results -> unconstrained`);
+          searchResults = await searchWikipedia(info.query, language, 'text');
+        }
 
         // Title search for entity titles — finds exact articles and near-title matches.
         // Entity titles are specific article names, so title-mode is the right fit.
