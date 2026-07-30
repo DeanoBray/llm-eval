@@ -190,6 +190,10 @@ async function searchWikipedia(query: string, language: 'en' | 'zh', mode: 'text
         url: `https://${host}/wiki/${encodeURIComponent(r.title.replace(/ /g, '_'))}`,
       }));
 
+      if (results.length === 0) {
+        console.warn(`[verifier] Wikipedia zero results for mode=${mode}: "${query.slice(0, 100)}"`);
+      }
+
       searchCache.set(key, results);
       return results;
     } catch (err: any) {
@@ -757,6 +761,13 @@ ${factsJson}`;
 
         // Fetch full article text for all candidates + entity titles, extract top 3 paragraphs
         const evidence = await fetchRelevantParagraphs(merged, info.entities, fact.text, language);
+
+        if (evidence.length === 0 && (constrainedResults.length > 0 || entitySearchResults.length > 0)) {
+          console.warn(`[verifier] ${fact.id}: ${merged.length} candidates but 0 paragraphs — query="${info.query.slice(0, 60)}", entities=${info.entities.join(',')}`);
+        }
+        if (evidence.length === 0 && merged.length === 0) {
+          console.warn(`[verifier] ${fact.id}: NO search results at all — query="${info.query.slice(0, 60)}", entities=${info.entities.join(',')}`);
+        }
 
         return this.verifyWithEvidence(fact, evidence);
       }));
