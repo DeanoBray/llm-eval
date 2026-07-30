@@ -206,6 +206,7 @@ export class EvaluationPipeline {
           status: 'running',
           message: `Translating outputs: ${translatedCount}/${totalTranslations}`,
           elapsed: Date.now() - startTime,
+          translationSlot: slot,
         });
         return `${slot}: translated (${outcome.result.translatedResponse!.length} chars)`;
       } catch (err: any) {

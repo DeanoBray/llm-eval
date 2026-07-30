@@ -95,6 +95,8 @@ export interface StreamProgress {
   result?: any;
   /** Milliseconds elapsed since this slot's stream started (added by pipeline) */
   elapsed?: number;
+  /** The slot that completed translation (only set for translation progress events) */
+  translationSlot?: string;
 }
 
 /** Full pipeline result */
