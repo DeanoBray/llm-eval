@@ -44,7 +44,7 @@ async function searchWikipedia(query: string, language: 'en' | 'zh'): Promise<Ev
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const response = await fetch(apiUrl, {
-        headers: { 'User-Agent': 'llm-eval/1.0 (bias evaluation pipeline)' },
+        headers: { 'User-Agent': 'llm-eval/1.0 (https://lxg2it.com; bossman@scottellis.com.au) bias evaluation research' },
         signal: AbortSignal.timeout(5000),
       });
 
