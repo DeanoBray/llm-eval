@@ -34,18 +34,31 @@ function stripHtml(html: string): string {
 }
 
 /** Score how relevant a paragraph is to a fact claim.
- *  Uses token overlap: what fraction of the fact's significant tokens appear in the paragraph.
+ *  Uses token overlap with language-aware tokenization:
+ *  - English: word-level tokens (split on whitespace/punctuation)
+ *  - Chinese/Japanese: character bigrams (since CJK text lacks word boundaries,
+ *    bigram overlap is the standard lightweight similarity metric)
  *  Returns 0-1. */
 function relevanceScore(paragraph: string, factText: string): number {
-  // Split on non-alphanumeric and non-CJK characters
+  const hasCJK = (s: string) => /[\u4e00-\u9fff\u3400-\u4dbf]/.test(s);
+
+  if (hasCJK(factText) || hasCJK(paragraph)) {
+    return cjkBigramScore(paragraph, factText);
+  }
+
+  return wordTokenScore(paragraph, factText);
+}
+
+/** Word-level token overlap for English text */
+function wordTokenScore(paragraph: string, factText: string): number {
   const tokenize = (s: string) =>
-    s.toLowerCase().split(/[^a-z0-9\u4e00-\u9fff]+/).filter(t => t.length > 1);
+    s.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length > 1);
 
   const factTokens = new Set(tokenize(factText));
   if (factTokens.size === 0) return 0;
 
   const paraTokens = tokenize(paragraph);
-  if (paraTokens.length < 5) return 0; // too short to be useful
+  if (paraTokens.length < 3) return 0;
 
   let overlap = 0;
   for (const t of paraTokens) {
@@ -53,6 +66,33 @@ function relevanceScore(paragraph: string, factText: string): number {
   }
 
   return overlap / factTokens.size;
+}
+
+/** Character bigram overlap for CJK text — the standard approach when word
+ *  segmenters aren't available. Two sentences about the same topic will
+ *  share many character pairs even when phrased differently. */
+function cjkBigramScore(paragraph: string, factText: string): number {
+  const bigrams = (s: string): Set<string> => {
+    const chars = s.replace(/[^\u4e00-\u9fff\u3400-\u4dbf]/g, '');
+    const set = new Set<string>();
+    for (let i = 0; i < chars.length - 1; i++) {
+      set.add(chars.slice(i, i + 2));
+    }
+    return set;
+  };
+
+  const factBigrams = bigrams(factText);
+  if (factBigrams.size === 0) return 0;
+
+  const paraBigrams = bigrams(paragraph);
+  if (paraBigrams.size < 2) return 0;
+
+  let overlap = 0;
+  for (const bg of paraBigrams) {
+    if (factBigrams.has(bg)) overlap++;
+  }
+
+  return overlap / factBigrams.size;
 }
 
 /** Search Wikipedia for evidence related to a claim.
