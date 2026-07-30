@@ -387,6 +387,7 @@ export class JobManager {
       trimCompletedJobs(20);
 
       // Broadcast completion
+      console.log('[job-manager] broadcasting result for ' + id + ' — subscribers: ' + (job.subscribers?.size || 0) + ', slotResults: ' + result.slotResults?.length);
       this.broadcast(id, { type: 'result', result });
 
       // Process next in queue
@@ -412,13 +413,21 @@ export class JobManager {
 
   private broadcast(jobId: string, payload: Record<string, unknown>): void {
     const job = this.jobs.get(jobId);
-    if (!job) return;
+    if (!job) {
+      console.log('[broadcast] job not found: ' + jobId);
+      return;
+    }
 
     const message = JSON.stringify(payload);
+    let sent = 0;
     for (const ws of job.subscribers) {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(message);
+        sent++;
       }
+    }
+    if (payload.type === 'result') {
+      console.log('[broadcast] result sent to ' + sent + ' subscribers (total: ' + job.subscribers.size + ')');
     }
   }
 }
