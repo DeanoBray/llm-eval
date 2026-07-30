@@ -33,6 +33,28 @@ function stripHtml(html: string): string {
     .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#039;/g, "'");
 }
 
+/** Score how relevant a paragraph is to a fact claim.
+ *  Uses token overlap: what fraction of the fact's significant tokens appear in the paragraph.
+ *  Returns 0-1. */
+function relevanceScore(paragraph: string, factText: string): number {
+  // Split on non-alphanumeric and non-CJK characters
+  const tokenize = (s: string) =>
+    s.toLowerCase().split(/[^a-z0-9\u4e00-\u9fff]+/).filter(t => t.length > 1);
+
+  const factTokens = new Set(tokenize(factText));
+  if (factTokens.size === 0) return 0;
+
+  const paraTokens = tokenize(paragraph);
+  if (paraTokens.length < 5) return 0; // too short to be useful
+
+  let overlap = 0;
+  for (const t of paraTokens) {
+    if (factTokens.has(t)) overlap++;
+  }
+
+  return overlap / factTokens.size;
+}
+
 /** Search Wikipedia for evidence related to a claim.
  *  Rate-limited (1 req/s) with retry on 429 to be polite to Wikimedia. */
 async function searchWikipedia(query: string, language: 'en' | 'zh'): Promise<EvidenceItem[]> {
@@ -41,7 +63,7 @@ async function searchWikipedia(query: string, language: 'en' | 'zh'): Promise<Ev
   if (cached) return cached;
 
   const host = language === 'en' ? 'en.wikipedia.org' : 'zh.wikipedia.org';
-  const apiUrl = `https://${host}/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=3&origin=*`;
+  const apiUrl = `https://${host}/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=5&origin=*`;
 
   // Rate limit with jitter: ensure minimum gap + random spread between requests
   await wikipediaRateLimit();
@@ -95,14 +117,32 @@ async function searchWikipedia(query: string, language: 'en' | 'zh'): Promise<Ev
   return [];
 }
 
-/** Fetch article intro paragraphs from Wikipedia extracts API.
- *  Batches all titles into a single API call. Rate-limited. */
-async function expandEvidenceItems(items: EvidenceItem[], language: 'en' | 'zh'): Promise<EvidenceItem[]> {
-  if (items.length === 0) return items;
-
+/** Fetch full article text for a set of titles and extract paragraphs most relevant to the fact.
+ *  Replaces the old expandEvidenceItems (which only got article intros).
+ *  Scores every paragraph against the fact, keeps top 3. */
+async function fetchRelevantParagraphs(
+  searchResults: EvidenceItem[],
+  extraTitles: string[],
+  factText: string,
+  language: 'en' | 'zh',
+): Promise<EvidenceItem[]> {
   const host = language === 'en' ? 'en.wikipedia.org' : 'zh.wikipedia.org';
-  const titles = items.map(e => e.title).join('|');
-  const apiUrl = `https://${host}/w/api.php?action=query&prop=extracts&exintro&explaintext&titles=${encodeURIComponent(titles)}&format=json&origin=*`;
+
+  // Build title→url map from search results, add entity titles with constructed URLs
+  const titleToUrl = new Map<string, string>();
+  for (const r of searchResults) titleToUrl.set(r.title, r.url);
+  for (const t of extraTitles) {
+    if (!titleToUrl.has(t)) {
+      titleToUrl.set(t, `https://${host}/wiki/${encodeURIComponent(t.replace(/ /g, '_'))}`);
+    }
+  }
+
+  const allTitles = [...titleToUrl.keys()].slice(0, 5);
+  if (allTitles.length === 0) return [];
+
+  // Fetch full article text (no exintro limit — get body sections, not just lead)
+  const titlesParam = allTitles.map(t => encodeURIComponent(t)).join('|');
+  const apiUrl = `https://${host}/w/api.php?action=query&prop=extracts&explaintext&exchars=12000&titles=${titlesParam}&format=json&origin=*`;
 
   await wikipediaRateLimit();
 
@@ -110,45 +150,69 @@ async function expandEvidenceItems(items: EvidenceItem[], language: 'en' | 'zh')
     try {
       const response = await fetch(apiUrl, {
         headers: { 'User-Agent': 'llm-eval/1.0 (https://lxg2it.com; bossman@scottellis.com.au) bias evaluation research' },
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(10000),
       });
 
       if (response.status === 429) {
         const retryDelay = WIKI_RETRY_DELAY * (attempt + 1);
-        console.warn(`[verifier] Wikipedia extracts 429 — retrying in ${retryDelay}ms (attempt ${attempt + 1}/3)`);
+        console.warn(`[verifier] Wikipedia full-text 429 — retrying in ${retryDelay}ms (attempt ${attempt + 1}/3)`);
         await sleep(retryDelay);
         lastWikipediaRequest = Date.now();
         continue;
       }
 
       if (!response.ok) {
-        console.error(`[verifier] Wikipedia extracts HTTP ${response.status}`);
-        return items;
+        console.error(`[verifier] Wikipedia full-text HTTP ${response.status}`);
+        // Fall back to search snippets
+        return searchResults.slice(0, 3);
       }
 
       const data: any = await response.json();
       const pages: Record<string, any> = data.query?.pages || {};
 
-      return items.map(item => {
-        const page = Object.values(pages).find((p: any) => p.title === item.title) as any;
-        if (page?.extract) {
-          return { ...item, extract: page.extract };
+      // Score every paragraph across all articles, collect best
+      const scored: { title: string; url: string; text: string; score: number }[] = [];
+
+      for (const [_, page] of Object.entries(pages)) {
+        const p = page as any;
+        const title: string = p.title;
+        const text: string = p.extract || '';
+        const url = titleToUrl.get(title) || '';
+
+        // Split on paragraph breaks (double newlines, or single newlines after sentences)
+        const paragraphs = text.split(/\n\n+/).filter(para => para.trim().length > 30);
+
+        for (const para of paragraphs) {
+          const score = relevanceScore(para, factText);
+          if (score > 0) {
+            scored.push({ title, url, text: para.trim(), score });
+          }
         }
-        return item;
-      });
+      }
+
+      // Sort by relevance, take top 3
+      scored.sort((a, b) => b.score - a.score);
+
+      return scored.slice(0, 3).map(sp => ({
+        source: host,
+        title: sp.title,
+        snippet: sp.text.slice(0, 250),
+        url: sp.url,
+        extract: sp.text,
+      }));
     } catch (err: any) {
       if (err.name === 'AbortError' && attempt < 2) {
-        console.warn(`[verifier] Wikipedia extracts timeout — retrying`);
+        console.warn(`[verifier] Wikipedia full-text timeout — retrying`);
         await sleep(WIKI_RETRY_DELAY);
         lastWikipediaRequest = Date.now();
         continue;
       }
-      console.error(`[verifier] Wikipedia extracts failed:`, err.message);
-      return items;
+      console.error(`[verifier] Wikipedia full-text failed:`, err.message);
+      return searchResults.slice(0, 3);
     }
   }
 
-  return items;
+  return searchResults.slice(0, 3);
 }
 
 /** Build a verification prompt that asks the model to compare claim against evidence */
@@ -207,14 +271,16 @@ function parseVerificationResponse(factId: string, text: string): { accurate: bo
  * Fact Verifier: checks facts against Wikipedia evidence rather than model knowledge.
  *
  * Architecture:
- * 1. Extract Wikipedia-optimized search queries from facts (LLM call, batched per slot)
- * 2. Search Wikipedia with extracted queries (not raw fact text)
- * 3. Expand search snippets by fetching article intros via extracts API
- * 4. Feed the fact + expanded evidence to the judge model
- * 5. Judge determines if evidence supports or contradicts the claim
+ * 1. Extract Wikipedia search queries + entity article titles from facts (1 LLM call per slot)
+ * 2. Search Wikipedia with extracted queries (5 results per fact)
+ * 3. Fetch FULL article text for candidate articles, score paragraphs by relevance to fact
+ * 4. Keep top 3 most relevant paragraphs as evidence
+ * 5. Feed the fact + targeted evidence to the judge model for verification
  *
- * Results include evidence links so users can independently verify.
- * A per-session cache avoids re-searching for duplicate facts across slots.
+ * Key improvement over v1: instead of article intros (which often lack specific claim evidence),
+ * we pull full article body text and extract the paragraphs most relevant to each fact.
+ * This catches evidence buried in article body sections and filters out unrelated search results
+ * (e.g., "Sonic the Hedgehog" for a claim about Chinese e-commerce).
  */
 export class FactVerifier {
   private llm: LLMClient;
@@ -225,10 +291,10 @@ export class FactVerifier {
   }
 
   /**
-   * Extract Wikipedia-optimized search queries from a batch of facts.
-   * One LLM call for all facts — returns {factId: searchQuery}.
+   * Extract Wikipedia-optimized search queries AND relevant article titles from facts.
+   * One LLM call for all facts — returns {factId: { query, entities }}.
    */
-  private async extractSearchQueries(facts: Fact[], language: 'en' | 'zh'): Promise<Record<string, string>> {
+  private async extractSearchQueries(facts: Fact[], language: 'en' | 'zh'): Promise<Record<string, { query: string; entities: string[] }>> {
     if (facts.length === 0) return {};
 
     const factsJson = JSON.stringify(facts.map(f => ({ id: f.id, text: f.text })));
@@ -236,40 +302,48 @@ export class FactVerifier {
       ? 'Chinese Wikipedia (zh.wikipedia.org)'
       : 'English Wikipedia (en.wikipedia.org)';
 
-    const prompt = `For each fact below, extract a concise search query for ${langHint} that would find the most relevant article. Focus on key entities, names, events, and concepts. Remove filler words and opinion language. Maximum 8 words per query. Return valid JSON only.
+    const prompt = `For each fact below, provide:
+1. A concise search query for ${langHint} (max 8 words, focus on key entities/events/concepts)
+2. 1-2 Wikipedia article titles most likely to contain evidence about this fact
+
+Return ONLY a JSON object mapping fact IDs:
+{"fact-1": {"query": "search terms here", "entities": ["Article Title 1", "Article Title 2"]}, ...}
 
 Facts:
-${factsJson}
-
-Respond with ONLY a JSON object mapping fact IDs to search queries:
-{"fact-1": "Great Wall of China length measurements", "fact-2": "another search query"}`;
+${factsJson}`;
 
     try {
       const result = await this.llm.query('judge', prompt, 512);
       const match = result.match(/\{[\s\S]*\}/);
       if (match) {
         const parsed = JSON.parse(match[0]);
-        // Validate that all fact IDs are present
+        // Validate all fact IDs and normalize
+        const normalized: Record<string, { query: string; entities: string[] }> = {};
         for (const f of facts) {
-          if (!parsed[f.id] || typeof parsed[f.id] !== 'string') {
-            parsed[f.id] = f.text.slice(0, 80);
+          const entry = parsed[f.id];
+          if (entry && typeof entry.query === 'string') {
+            normalized[f.id] = {
+              query: entry.query,
+              entities: Array.isArray(entry.entities) ? entry.entities.filter((e: any) => typeof e === 'string').slice(0, 2) : [],
+            };
+          } else {
+            normalized[f.id] = { query: f.text.slice(0, 80), entities: [] };
           }
         }
-        return parsed;
+        return normalized;
       }
     } catch (err: any) {
       console.warn(`[verifier] Query extraction failed, falling back to raw fact text:`, err.message);
     }
 
-    // Fallback: use raw fact text (trimmed)
-    const fallback: Record<string, string> = {};
-    for (const f of facts) fallback[f.id] = f.text.slice(0, 80);
+    // Fallback: use raw fact text as query, no entities
+    const fallback: Record<string, { query: string; entities: string[] }> = {};
+    for (const f of facts) fallback[f.id] = { query: f.text.slice(0, 80), entities: [] };
     return fallback;
   }
 
   /**
    * Verify a single fact using pre-fetched evidence.
-   * Evidence should already have extracts populated via expandEvidenceItems.
    */
   private async verifyWithEvidence(fact: Fact, evidence: EvidenceItem[]): Promise<FactVerification> {
     if (evidence.length === 0) {
@@ -277,7 +351,7 @@ Respond with ONLY a JSON object mapping fact IDs to search queries:
         factId: fact.id,
         accurate: false,
         confidence: 0.0,
-        explanation: 'no Wikipedia evidence found for this claim',
+        explanation: 'no relevant Wikipedia evidence found for this claim',
         evidence: [],
       };
     }
@@ -308,31 +382,32 @@ Respond with ONLY a JSON object mapping fact IDs to search queries:
   /**
    * Verify multiple facts in parallel (concurrency limited).
    *
-   * Pipeline:
-   * 1. Extract Wikipedia-optimized search queries from all facts (1 LLM call)
-   * 2. For each fact: search Wikipedia → expand snippets → judge verification
-   *
-   * @param facts — facts to verify (all from the same language slot)
-   * @param language — 'en' or 'zh' — which Wikipedia to search
-   * @param concurrency — max parallel verification calls (default 3: Wikipedia + LLM per call)
+   * Pipeline per fact:
+   * 1. Search Wikipedia with extracted query → candidate articles
+   * 2. Add entity titles from extraction → more candidates
+   * 3. Fetch FULL article text, score paragraphs by relevance → top 3 passages
+   * 4. Judge verifies claim against extracted passages
    */
   async verifyBatch(facts: Fact[], language: 'en' | 'zh' = 'en', concurrency = 3): Promise<FactVerification[]> {
     if (facts.length === 0) return [];
 
-    // Step 1: Extract search queries for all facts (single LLM call)
+    // Step 1: Extract search queries + entity titles for all facts (single LLM call)
     const queries = await this.extractSearchQueries(facts, language);
 
-    // Step 2: Search + expand + verify in parallel batches
+    // Step 2: Search → full-text paragraph extraction → judge verification in parallel batches
     const results: FactVerification[] = [];
 
     for (let i = 0; i < facts.length; i += concurrency) {
       const batch = facts.slice(i, i + concurrency);
       const batchResults = await Promise.all(batch.map(async fact => {
-        const query = queries[fact.id] || fact.text.slice(0, 80);
-        let evidence = await searchWikipedia(query, language);
-        if (evidence.length > 0) {
-          evidence = await expandEvidenceItems(evidence, language);
-        }
+        const info = queries[fact.id] || { query: fact.text.slice(0, 80), entities: [] };
+
+        // Search Wikipedia with extracted query
+        const searchResults = await searchWikipedia(info.query, language);
+
+        // Fetch full article text for candidates + entity titles, extract top 3 paragraphs
+        const evidence = await fetchRelevantParagraphs(searchResults, info.entities, fact.text, language);
+
         return this.verifyWithEvidence(fact, evidence);
       }));
       results.push(...batchResults);
