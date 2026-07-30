@@ -21,7 +21,12 @@ export class FactExtractor {
       : this.buildEnPrompt(response);
 
     const result = await this.llm.query('judge', prompt, 4096);
-    return this.parseFactResponse(result);
+    console.log(`[fact-extractor] judge response (${result.length} chars, first 500): ${result.slice(0, 500)}`);
+    const facts = this.parseFactResponse(result);
+    if (facts.length === 0 && result.length > 0) {
+      console.warn(`[fact-extractor] ZERO facts parsed from ${result.length}-char judge response:\n${result.slice(0, 1000)}`);
+    }
+    return facts;
   }
 
   private buildEnPrompt(response: string): string {

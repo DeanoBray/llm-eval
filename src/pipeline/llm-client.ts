@@ -128,6 +128,7 @@ export class LLMClient {
       }
     }
 
+    console.warn(`[llm-client] no text block found in response for slot=${slot}. Content blocks: ${JSON.stringify(data.content)}`);
     return '';
   }
 
