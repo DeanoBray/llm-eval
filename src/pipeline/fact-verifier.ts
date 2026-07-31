@@ -223,6 +223,7 @@ async function fetchRelevantParagraphs(
   extraTitles: string[],
   factText: string,
   language: 'en' | 'zh',
+  constrainedTitles?: Set<string>,
 ): Promise<EvidenceItem[]> {
   const host = language === 'en' ? 'en.wikipedia.org' : 'zh.wikipedia.org';
   const entityTitleSet = new Set(extraTitles.map(t => t.toLowerCase()));
@@ -295,6 +296,12 @@ async function fetchRelevantParagraphs(
             // correct sources. A 1.5x boost ensures "Mobile payments in China" outranks
             // "Beijing Subway" even when both share similar keyword overlap counts.
             if (isEntityMatch) score *= 1.5;
+
+            // Boost constrained (intitle-gated) paragraphs — they come from articles
+            // whose TITLES contain the fact's key terms. A 1.3x boost ensures
+            // "2024 Taiwanese presidential election" outranks "Media bias in the US"
+            // for Taiwan-specific facts when both share similar content words.
+            if (constrainedTitles && constrainedTitles.has(title)) score *= 1.3;
             scored.push({ title, url, text: para.trim(), score });
           }
         }
@@ -737,9 +744,11 @@ ${factsJson}`;
         const constrainedResults = await searchWikipedia(constrainedQuery, language, 'text');
 
         let searchResults = constrainedResults;
+        // Track which results are from constrained (intitle-gated) search for scoring boost
+        const constrainedTitles = new Set(constrainedResults.map(r => r.title));
         if (intitleConstraint && constrainedResults.length < 3) {
           const unconstrainedResults = await searchWikipedia(info.query, language, 'text');
-          const seen = new Set(constrainedResults.map(r => r.title));
+          const seen = new Set(constrainedTitles);
           for (const r of unconstrainedResults) {
             if (!seen.has(r.title) && searchResults.length < 5) {
               seen.add(r.title);
@@ -769,7 +778,7 @@ ${factsJson}`;
         }
 
         // Fetch full article text for all candidates + entity titles, extract top 3 paragraphs
-        const evidence = await fetchRelevantParagraphs(merged, info.entities, fact.text, language);
+        const evidence = await fetchRelevantParagraphs(merged, info.entities, fact.text, language, constrainedTitles);
 
         if (evidence.length === 0 && (constrainedResults.length > 0 || entitySearchResults.length > 0)) {
           console.warn(`[verifier] ${fact.id}: ${merged.length} candidates but 0 paragraphs — query="${info.query.slice(0, 60)}", entities=${info.entities.join(',')}`);
