@@ -43,7 +43,7 @@ function stripHtml(html: string): string {
 function relevanceScore(paragraph: string, factText: string): number {
   const hasCJK = (s: string) => /[\u4e00-\u9fff\u3400-\u4dbf]/.test(s);
 
-  if (hasCJK(factText) || hasCJK(paragraph)) {
+  if (hasCJK(factText) && hasCJK(paragraph)) {
     const score = cjkBigramScore(paragraph, factText);
     // Require at least 1 bigram overlap — intitle-gated search handles precision
     if (score > 0 && score * cjkBigramCount(factText) < 1) return 0;
