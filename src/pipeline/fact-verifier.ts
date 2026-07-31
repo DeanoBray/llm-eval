@@ -45,16 +45,18 @@ function relevanceScore(paragraph: string, factText: string): number {
 
   if (hasCJK(factText) || hasCJK(paragraph)) {
     const score = cjkBigramScore(paragraph, factText);
-    // Require at least 3 bigram overlaps — single-phrase matches are noise
-    if (score > 0 && score * cjkBigramCount(factText) < 3) return 0;
+    // Require at least 1 bigram overlap — intitle-gated search handles precision
+    if (score > 0 && score * cjkBigramCount(factText) < 1) return 0;
     return score;
   }
 
-  // Minimum 2-OVERLAPPING-CONTENT-WORD overlap to filter out stopword-only
-  // matches. Previously "the", "in", "of", "a" counted, so a paragraph about
-  // "the economy in China" would pass against "the CCP in China" on just "the/in/China".
-  const { score, overlapCount, contentOverlapCount } = wordTokenScoreWithCount(paragraph, factText);
-  if (contentOverlapCount < 2) return 0;
+  // Single content-word overlap is sufficient: with stopwords filtered and
+  // intitle-gated search, a lone overlap like "TSMC", "Lai", or "Yuan" is
+  // a strong indicator of topical relevance — not a false positive like the
+  // old "Beijing Subway"/"the/of/in" noise. Two-content-word threshold was
+  // the primary cause of "5 candidates but 0 paragraphs" failures.
+  const { score, contentOverlapCount } = wordTokenScoreWithCount(paragraph, factText);
+  if (contentOverlapCount < 1) return 0;
   return score;
 }
 
