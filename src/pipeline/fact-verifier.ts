@@ -718,20 +718,20 @@ ${factsJson}`;
         // but avoids the AND-logic trap where `intitle:china intitle:communist`
         // only returns "Chinese Communist Party" and its sub-articles — missing
         // "Politics of China", "Economy of China", etc.
-        // Single-word intitle constraint: use ONLY the first entity's first word.
-        // Multi-word OR (intitle:taiwan|united|states|party) is too permissive —
-        // it admits "Chile-United States relations" for Taiwan facts when "united"
-        // or "states" matches. Single word is precise: intitle:taiwan returns all
-        // Taiwan-titled articles, full-text search within them finds the evidence.
+        // Multi-word OR intitle constraint from first entity. Broad enough to
+        // capture related articles (intitle:taiwan|political catches both
+        // 'Taiwan' and 'Politics of Taiwan'), combined with the primary-entity
+        // filter below to exclude cross-country noise like 'Chile-United States
+        // relations' when 'united' matches but 'taiwan' doesn't.
         let intitleConstraint = '';
         const firstEntityWords = (info.entities[0] || '')
           .toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2);
         if (firstEntityWords.length > 0) {
-          intitleConstraint = `intitle:${firstEntityWords[0]}`;
+          intitleConstraint = `intitle:${firstEntityWords.join('|')}`;
         } else {
-          const queryWords = info.query.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2);
+          const queryWords = info.query.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2).slice(0, 3);
           if (queryWords.length > 0) {
-            intitleConstraint = `intitle:${queryWords[0]}`;
+            intitleConstraint = `intitle:${queryWords.join('|')}`;
           }
         }
 
@@ -749,20 +749,20 @@ ${factsJson}`;
         // Track which results are from constrained (intitle-gated) search for scoring boost
         const constrainedTitles = new Set(constrainedResults.map(r => r.title));
 
+        // Extract primary filter word for cross-country noise elimination.
+        // Used by both the unconstrained supplement filter AND the post-merge
+        // filter that catches constrained-results noise like "Chile-United States
+        // relations" admitted by OR intitle matching on generic words.
+        const primaryFilter = (info.entities[0] || info.query)
+          .toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2)[0]?.toLowerCase() || '';
+
         // Supplement with unconstrained results, but ONLY those where the
-        // title/snippet contains the primary entity (first content word from
-        // the query). This eliminates cross-country noise: "2024 Indian general
-        // election" and "Benjamin Netanyahu" for Taiwan-specific facts, while
-        // still allowing "American defense of Taiwan" which passes.
+        // title contains the primary entity word.
         if (intitleConstraint) {
-          // Extract primary filter word: first entity word, or first query content word
-          const primaryFilter = (info.entities[0] || info.query)
-            .toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2)[0]?.toLowerCase() || '';
           const unconstrainedResults = await searchWikipedia(info.query, language, 'text');
           const seen = new Set(constrainedTitles);
           for (const r of unconstrainedResults) {
             if (seen.has(r.title)) continue;
-            // Only admit unconstrained results that mention the primary entity
             if (primaryFilter && !r.title.toLowerCase().includes(primaryFilter)) continue;
             seen.add(r.title);
             searchResults.push(r);
@@ -788,6 +788,22 @@ ${factsJson}`;
             seen.add(r.title);
             merged.push(r);
           }
+        }
+
+        // Post-search filter: remove results whose title doesn't contain the primary
+        // entity word. This catches constrained-results noise like 'Chile-United States
+        // relations' for Taiwan facts — it passed intitle:united|states but has nothing
+        // to do with Taiwan. Only applies when we have a meaningful primary filter word.
+        // Skip if already filtered during supplement (primaryFilter already set).
+        if (primaryFilter && merged.length > 5) {
+          const filtered = merged.filter(r =>
+            r.title.toLowerCase().includes(primaryFilter) ||
+            r.snippet.toLowerCase().includes(primaryFilter)
+          );
+          if (filtered.length >= 3) {
+            merged.length = 0;
+            merged.push(...filtered);
+          } // else: too aggressive, keep original
         }
 
         // Fetch full article text for all candidates + entity titles, extract top 3 paragraphs
