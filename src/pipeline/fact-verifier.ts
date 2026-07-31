@@ -718,18 +718,20 @@ ${factsJson}`;
         // but avoids the AND-logic trap where `intitle:china intitle:communist`
         // only returns "Chinese Communist Party" and its sub-articles — missing
         // "Politics of China", "Economy of China", etc.
+        // Single-word intitle constraint: use ONLY the first entity's first word.
+        // Multi-word OR (intitle:taiwan|united|states|party) is too permissive —
+        // it admits "Chile-United States relations" for Taiwan facts when "united"
+        // or "states" matches. Single word is precise: intitle:taiwan returns all
+        // Taiwan-titled articles, full-text search within them finds the evidence.
         let intitleConstraint = '';
         const firstEntityWords = (info.entities[0] || '')
           .toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2);
         if (firstEntityWords.length > 0) {
-          intitleConstraint = `intitle:${firstEntityWords.join('|')}`;
+          intitleConstraint = `intitle:${firstEntityWords[0]}`;
         } else {
-          // Fallback: use first 3 content words from query as intitle constraint.
-          // When entity extraction fails (empty entities), this prevents
-          // unconstrained noise like "Communist Party USA" for DPP facts.
-          const queryWords = info.query.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2).slice(0, 3);
+          const queryWords = info.query.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2);
           if (queryWords.length > 0) {
-            intitleConstraint = `intitle:${queryWords.join('|')}`;
+            intitleConstraint = `intitle:${queryWords[0]}`;
           }
         }
 
