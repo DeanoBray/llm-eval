@@ -716,25 +716,32 @@ ${factsJson}`;
           .toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2);
         if (firstEntityWords.length > 0) {
           intitleConstraint = `intitle:${firstEntityWords.join('|')}`;
+        } else {
+          // Fallback: use first 3 content words from query as intitle constraint.
+          // When entity extraction fails (empty entities), this prevents
+          // unconstrained noise like "Communist Party USA" for DPP facts.
+          const queryWords = info.query.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2).slice(0, 3);
+          if (queryWords.length > 0) {
+            intitleConstraint = `intitle:${queryWords.join('|')}`;
+          }
         }
 
         // Text search with intitle OR constraint — high precision (only articles
-        // with entity in title), but some niche topics have oddly-named articles
-        // that slip through. Supplement with unconstrained search for coverage.
+        // with entity keywords in title). Supplement with unconstrained search
+        // only when constrained < 3 to maintain quality: unconstrained results
+        // like "European Union" for Taiwan Relations Act, or "Communist Party USA"
+        // for DPP, drown out constrained precision otherwise.
         const constrainedQuery = intitleConstraint
           ? `${intitleConstraint} ${info.query}`
           : info.query;
         const constrainedResults = await searchWikipedia(constrainedQuery, language, 'text');
 
-        // Run unconstrained search as supplement — constrained results come first
-        // in the merge (higher precision), unconstrained fills gaps.
         let searchResults = constrainedResults;
-        if (intitleConstraint) {
+        if (intitleConstraint && constrainedResults.length < 3) {
           const unconstrainedResults = await searchWikipedia(info.query, language, 'text');
-          // Merge: constrained first (they're entity-gated), then unconstrained
           const seen = new Set(constrainedResults.map(r => r.title));
           for (const r of unconstrainedResults) {
-            if (!seen.has(r.title)) {
+            if (!seen.has(r.title) && searchResults.length < 5) {
               seen.add(r.title);
               searchResults.push(r);
             }
