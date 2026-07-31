@@ -746,11 +746,16 @@ ${factsJson}`;
         let searchResults = constrainedResults;
         // Track which results are from constrained (intitle-gated) search for scoring boost
         const constrainedTitles = new Set(constrainedResults.map(r => r.title));
-        if (intitleConstraint && constrainedResults.length < 3) {
+
+        // Always supplement with a few unconstrained results — the 1.3x boost for
+        // constrained paragraphs ensures intitle-gated articles still dominate scoring.
+        // Capped to prevent "Chile-US relations" noise for Taiwan facts.
+        if (intitleConstraint) {
+          const supplementLimit = constrainedResults.length >= 3 ? 2 : 4; // more if constrained is thin
           const unconstrainedResults = await searchWikipedia(info.query, language, 'text');
           const seen = new Set(constrainedTitles);
           for (const r of unconstrainedResults) {
-            if (!seen.has(r.title) && searchResults.length < 5) {
+            if (!seen.has(r.title) && searchResults.length < constrainedResults.length + supplementLimit) {
               seen.add(r.title);
               searchResults.push(r);
             }
