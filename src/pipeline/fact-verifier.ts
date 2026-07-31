@@ -747,18 +747,24 @@ ${factsJson}`;
         // Track which results are from constrained (intitle-gated) search for scoring boost
         const constrainedTitles = new Set(constrainedResults.map(r => r.title));
 
-        // Always supplement with a few unconstrained results — the 1.3x boost for
-        // constrained paragraphs ensures intitle-gated articles still dominate scoring.
-        // Capped to prevent "Chile-US relations" noise for Taiwan facts.
+        // Supplement with unconstrained results, but ONLY those where the
+        // title/snippet contains the primary entity (first content word from
+        // the query). This eliminates cross-country noise: "2024 Indian general
+        // election" and "Benjamin Netanyahu" for Taiwan-specific facts, while
+        // still allowing "American defense of Taiwan" which passes.
         if (intitleConstraint) {
-          const supplementLimit = constrainedResults.length >= 3 ? 2 : 4; // more if constrained is thin
+          // Extract primary filter word: first entity word, or first query content word
+          const primaryFilter = (info.entities[0] || info.query)
+            .toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2)[0]?.toLowerCase() || '';
           const unconstrainedResults = await searchWikipedia(info.query, language, 'text');
           const seen = new Set(constrainedTitles);
           for (const r of unconstrainedResults) {
-            if (!seen.has(r.title) && searchResults.length < constrainedResults.length + supplementLimit) {
-              seen.add(r.title);
-              searchResults.push(r);
-            }
+            if (seen.has(r.title)) continue;
+            // Only admit unconstrained results that mention the primary entity
+            if (primaryFilter && !r.title.toLowerCase().includes(primaryFilter)) continue;
+            seen.add(r.title);
+            searchResults.push(r);
+            if (searchResults.length >= constrainedResults.length + 4) break;
           }
         }
 
