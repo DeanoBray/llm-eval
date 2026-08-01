@@ -1,11 +1,70 @@
 import { LLMClient } from './llm-client';
 import type { Fact, FactVerification, EvidenceItem } from './types';
 
+/** Local Wikipedia semantic search service (Mímir via SSH tunnel from the AU server). */
+const WIKI_SERVICE_URL = process.env.WIKI_SERVICE_URL || 'http://localhost:21500';
+
 /** Per-fact cache to avoid re-searching Wikipedia for duplicate facts across slots */
 const searchCache = new Map<string, EvidenceItem[]>();
 
 function cacheKey(query: string, language: 'en' | 'zh', mode: 'text' | 'title'): string {
   return `${language}:${mode}:${query}`;
+}
+
+/** Strip an intitle: constraint into title keywords, returning the clean query */
+function splitIntitleConstraint(query: string): { constrain: string[]; query: string } {
+  const m = query.match(/\bintitle:([^\s]+)/);
+  if (!m) return { constrain: [], query };
+  return { constrain: m[1].split('|'), query: query.replace(/\bintitle:[^\s]+/g, '').trim() || query };
+}
+
+/** Search the local semantic service; returns null if unavailable (caller falls back). */
+async function searchLocalService(
+  query: string, language: 'en' | 'zh', mode: 'text' | 'title',
+): Promise<{ title: string; intro: string; score: number }[] | null> {
+  const { constrain, query: cleanQuery } = splitIntitleConstraint(query);
+  try {
+    const response = await fetch(`${WIKI_SERVICE_URL}/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: cleanQuery, lang: language, mode, top_k: 8, constrain }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) {
+      console.warn(`[verifier] Local wiki service HTTP ${response.status} — falling back to Wikimedia`);
+      return null;
+    }
+    const data: any = await response.json();
+    return (data.results || []).map((r: any) => ({
+      title: r.title, intro: r.intro || '', score: r.score || 0,
+    }));
+  } catch (err: any) {
+    console.warn(`[verifier] Local wiki service unavailable (${err.message}) — falling back to Wikimedia`);
+    return null;
+  }
+}
+
+/** Fetch clean article text from the local service; null if unavailable. */
+async function extractLocalService(
+  titles: string[], language: 'en' | 'zh', maxChars = 12000,
+): Promise<Map<string, string> | null> {
+  try {
+    const response = await fetch(`${WIKI_SERVICE_URL}/extract`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ titles, lang: language, max_chars: maxChars }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) return null;
+    const data: any = await response.json();
+    const map = new Map<string, string>();
+    for (const a of data.articles || []) {
+      if (a.extract) map.set(a.title, a.extract);
+    }
+    return map;
+  } catch {
+    return null;
+  }
 }
 
 /** Global rate limiter — Wikipedia asks for polite spacing between requests */
@@ -148,7 +207,8 @@ function cjkBigramScore(paragraph: string, factText: string): number {
 }
 
 /** Search Wikipedia for evidence related to a claim.
- *  Rate-limited (1 req/s) with retry on 429 to be polite to Wikimedia.
+ *  Tries the local semantic search service first (fast, no rate limits);
+ *  falls back to the Wikimedia API (rate-limited 1 req/s, retry on 429).
  *  @param mode - 'text' searches full article text (for analytical queries), 'title' searches page titles only (for entity lookups). Default 'text'. */
 async function searchWikipedia(query: string, language: 'en' | 'zh', mode: 'text' | 'title' = 'text'): Promise<EvidenceItem[]> {
   const key = cacheKey(query, language, mode);
@@ -156,10 +216,26 @@ async function searchWikipedia(query: string, language: 'en' | 'zh', mode: 'text
   if (cached) return cached;
 
   const host = language === 'en' ? 'en.wikipedia.org' : 'zh.wikipedia.org';
+
+  const local = await searchLocalService(query, language, mode);
+  if (local !== null) {
+    const results: EvidenceItem[] = local.map(r => ({
+      source: host,
+      title: r.title,
+      snippet: r.intro.slice(0, 250),
+      url: `https://${host}/wiki/${encodeURIComponent(r.title.replace(/ /g, '_'))}`,
+    }));
+    if (results.length === 0) {
+      console.warn(`[verifier] Local wiki zero results for mode=${mode}: "${query.slice(0, 100)}"`);
+    }
+    searchCache.set(key, results);
+    return results;
+  }
+
+  // --- Wikimedia API fallback ---
   const srwhat = mode === 'title' ? '&srwhat=title' : '&srwhat=text';
   const apiUrl = `https://${host}/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}${srwhat}&format=json&srlimit=5&origin=*`;
 
-  // Rate limit with jitter: ensure minimum gap + random spread between requests
   await wikipediaRateLimit();
 
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -217,7 +293,8 @@ async function searchWikipedia(query: string, language: 'en' | 'zh', mode: 'text
 
 /** Fetch full article text for a set of titles and extract paragraphs most relevant to the fact.
  *  Entity titles (LLM-extracted) get a 1.5x score boost since they're the most likely correct sources.
- *  Scores every paragraph against the fact, keeps top 3. */
+ *  Scores every paragraph against the fact, keeps top 3.
+ *  Tries the local semantic service first, falls back to the Wikimedia extracts API. */
 async function fetchRelevantParagraphs(
   searchResults: EvidenceItem[],
   extraTitles: string[],
@@ -247,99 +324,115 @@ async function fetchRelevantParagraphs(
   const allTitles = [...titleToUrl.keys()];
   if (allTitles.length === 0) return [];
 
-  // Fetch full article text (no exintro limit — get body sections, not just lead)
-  const titlesParam = allTitles.map(t => encodeURIComponent(t)).join('|');
-  const apiUrl = `https://${host}/w/api.php?action=query&prop=extracts&explaintext&exchars=12000&titles=${titlesParam}&format=json&origin=*`;
+  // Score every paragraph across all articles, collect best
+  const scored: { title: string; url: string; text: string; score: number }[] = [];
 
-  await wikipediaRateLimit();
+  const scoreExtracts = (extracts: Map<string, string>) => {
+    for (const [title, text] of extracts) {
+      if (!text) continue;
+      const url = titleToUrl.get(title) || '';
+      const isEntityMatch = entityTitleSet.has(title.toLowerCase());
+      const paragraphs = text.split(/\n\n+/).filter(para => para.trim().length > 30);
+      for (const para of paragraphs) {
+        let score = relevanceScore(para, factText);
+        if (score > 0) {
+          // Boost entity-matched articles — they're LLM-selected as the most likely
+          // correct sources. A 1.5x boost ensures "Mobile payments in China" outranks
+          // "Beijing Subway" even when both share similar keyword overlap counts.
+          if (isEntityMatch) score *= 1.5;
 
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const response = await fetch(apiUrl, {
-        headers: { 'User-Agent': 'llm-eval/1.0 (https://lxg2it.com; bossman@scottellis.com.au) bias evaluation research' },
-        signal: AbortSignal.timeout(10000),
-      });
-
-      if (response.status === 429) {
-        const retryDelay = WIKI_RETRY_DELAY * (attempt + 1);
-        console.warn(`[verifier] Wikipedia full-text 429 — retrying in ${retryDelay}ms (attempt ${attempt + 1}/3)`);
-        await sleep(retryDelay);
-        lastWikipediaRequest = Date.now();
-        continue;
-      }
-
-      if (!response.ok) {
-        console.error(`[verifier] Wikipedia full-text HTTP ${response.status}`);
-        return searchResults.slice(0, 3);
-      }
-
-      const data: any = await response.json();
-      const pages: Record<string, any> = data.query?.pages || {};
-
-      // Score every paragraph across all articles, collect best
-      const scored: { title: string; url: string; text: string; score: number }[] = [];
-
-      for (const [_, page] of Object.entries(pages)) {
-        const p = page as any;
-        const title: string = p.title;
-        const text: string = p.extract || '';
-        const url = titleToUrl.get(title) || '';
-        const isEntityMatch = entityTitleSet.has(title.toLowerCase());
-
-        // Split on paragraph breaks
-        const paragraphs = text.split(/\n\n+/).filter(para => para.trim().length > 30);
-
-        for (const para of paragraphs) {
-          let score = relevanceScore(para, factText);
-          if (score > 0) {
-            // Boost entity-matched articles — they're LLM-selected as the most likely
-            // correct sources. A 1.5x boost ensures "Mobile payments in China" outranks
-            // "Beijing Subway" even when both share similar keyword overlap counts.
-            if (isEntityMatch) score *= 1.5;
-
-            // Boost constrained (intitle-gated) paragraphs — they come from articles
-            // whose TITLES contain the fact's key terms. A 1.3x boost ensures
-            // "2024 Taiwanese presidential election" outranks "Media bias in the US"
-            // for Taiwan-specific facts when both share similar content words.
-            if (constrainedTitles && constrainedTitles.has(title)) score *= 1.3;
-            scored.push({ title, url, text: para.trim(), score });
-          }
+          // Boost constrained (intitle-gated) paragraphs — they come from articles
+          // whose TITLES contain the fact's key terms. A 1.3x boost ensures
+          // "2024 Taiwanese presidential election" outranks "Media bias in the US"
+          // for Taiwan-specific facts when both share similar content words.
+          if (constrainedTitles && constrainedTitles.has(title)) score *= 1.3;
+          scored.push({ title, url, text: para.trim(), score });
         }
       }
+    }
+  };
 
-      // Sort by relevance, build top-3 with per-source diversity
-      scored.sort((a, b) => b.score - a.score);
+  // Try the local service first — clean text, no rate limits
+  const localExtracts = await extractLocalService(allTitles, language, 12000);
+  if (localExtracts !== null) {
+    scoreExtracts(localExtracts);
+    // Merge: local service returns only articles it has (some may be missing).
+    // Score what we got; if nothing scored, return the search results as-is.
+    scored.sort((a, b) => b.score - a.score);
+    if (scored.length === 0) {
+      return searchResults.slice(0, 3).map(r => ({ ...r, extract: r.snippet }));
+    }
+  } else {
+    // --- Wikimedia API fallback ---
+    const titlesParam = allTitles.map(t => encodeURIComponent(t)).join('|');
+    const apiUrl = `https://${host}/w/api.php?action=query&prop=extracts&explaintext&exchars=12000&titles=${titlesParam}&format=json&origin=*`;
 
-      const top: { title: string; url: string; text: string; score: number }[] = [];
-      const sourceCounts = new Map<string, number>();
-      for (const sp of scored) {
-        const count = sourceCounts.get(sp.title) || 0;
-        if (count >= 2) continue; // max 2 paragraphs per article
-        sourceCounts.set(sp.title, count + 1);
-        top.push(sp);
-        if (top.length >= 3) break;
+    await wikipediaRateLimit();
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const response = await fetch(apiUrl, {
+          headers: { 'User-Agent': 'llm-eval/1.0 (https://lxg2it.com; bossman@scottellis.com.au) bias evaluation research' },
+          signal: AbortSignal.timeout(10000),
+        });
+
+        if (response.status === 429) {
+          const retryDelay = WIKI_RETRY_DELAY * (attempt + 1);
+          console.warn(`[verifier] Wikipedia full-text 429 — retrying in ${retryDelay}ms (attempt ${attempt + 1}/3)`);
+          await sleep(retryDelay);
+          lastWikipediaRequest = Date.now();
+          continue;
+        }
+
+        if (!response.ok) {
+          console.error(`[verifier] Wikipedia full-text HTTP ${response.status}`);
+          return searchResults.slice(0, 3);
+        }
+
+        const data: any = await response.json();
+        const pages: Record<string, any> = data.query?.pages || {};
+        const extracts = new Map<string, string>();
+        for (const [_, page] of Object.entries(pages)) {
+          const p = page as any;
+          if (p.extract) extracts.set(p.title, p.extract);
+        }
+        scoreExtracts(extracts);
+        break;
+      } catch (err: any) {
+        if (err.name === 'AbortError' && attempt < 2) {
+          console.warn(`[verifier] Wikipedia full-text timeout — retrying`);
+          await sleep(WIKI_RETRY_DELAY);
+          lastWikipediaRequest = Date.now();
+          continue;
+        }
+        console.error(`[verifier] Wikipedia full-text failed:`, err.message);
+        return searchResults.slice(0, 3);
       }
-
-      return top.map(sp => ({
-        source: host,
-        title: sp.title,
-        snippet: sp.text.slice(0, 250),
-        url: sp.url,
-        extract: sp.text,
-      }));
-    } catch (err: any) {
-      if (err.name === 'AbortError' && attempt < 2) {
-        console.warn(`[verifier] Wikipedia full-text timeout — retrying`);
-        await sleep(WIKI_RETRY_DELAY);
-        lastWikipediaRequest = Date.now();
-        continue;
-      }
-      console.error(`[verifier] Wikipedia full-text failed:`, err.message);
-      return searchResults.slice(0, 3);
     }
   }
 
-  return searchResults.slice(0, 3);
+  // Sort by relevance, build top-3 with per-source diversity
+  scored.sort((a, b) => b.score - a.score);
+
+  const top: { title: string; url: string; text: string; score: number }[] = [];
+  const sourceCounts = new Map<string, number>();
+  for (const sp of scored) {
+    const count = sourceCounts.get(sp.title) || 0;
+    if (count >= 2) continue; // max 2 paragraphs per article
+    sourceCounts.set(sp.title, count + 1);
+    top.push(sp);
+    if (top.length >= 3) break;
+  }
+
+  if (top.length === 0) return searchResults.slice(0, 3);
+
+  return top.map(sp => ({
+    source: host,
+    title: sp.title,
+    snippet: sp.text.slice(0, 250),
+    url: sp.url,
+    extract: sp.text,
+  }));
 }
 
 /** Build a verification prompt that asks the model to compare claim against evidence */
