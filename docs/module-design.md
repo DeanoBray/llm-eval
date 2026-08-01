@@ -147,15 +147,28 @@ Three changes address the V4 failures:
 **Current limitations:**
 - Some facts are inherently unverifiable through Wikipedia. Comparative/editorial claims ("China created a cashless society more integrated than those in the U.S. or Europe") aren't stated directly in any Wikipedia article.
 - The judge model can still make errors when evidence is tangential.
-- Entity extraction quality depends on the LLM's knowledge of Wikipedia article titles.
+- Entity extraction quality depends on the LLM's knowledge of Wikipedia article titles. The LLM occasionally returns predicates glued onto titles ("Lai Ching-te maintains") — mitigated by prompt hardening, entity stopword filtering, and service leniency (below).
 
-**Current architecture:**
-1. Extract search queries + entity article titles (1 LLM call per slot)
-2. Search Wikipedia with both extracted queries AND entity titles
-3. Merge + deduplicate search results
+#### V6: Local semantic retrieval (LanceDB + bge embeddings)
+
+Replaced the Wikimedia keyword-search API with a self-hosted semantic search service (`~/wikipedia/service.py` on Mímir, FastAPI :21500, tunneled to the AU server). Wikipedia dumps were parsed into SQLite, intros embedded with mlx-embeddings (`bge-small-en-v1.5-bf16` 384-dim, `bge-small-zh-v1.5-mlx` 512-dim), stored in LanceDB IVF_PQ indexes: **6,988,632 EN + 1,513,737 ZH articles**.
+
+**What this changed:**
+- **Semantic > keyword:** queries now match by meaning, not shared words — the V4/V5 "Wikipedia search is keyword-based" limitation is gone for retrieval.
+- **Script normalization:** zhwiki is Traditional Chinese, but LLM-translated queries arrive Simplified. The service converts query/constrain/title input to Traditional (OpenCC s2t) at the boundary, so exact title lookups, embedding, and constrain filters all see the index's script (赖清德 → 賴清德).
+- **intitle OR constraint:** the verifier builds `intitle:entity-word-1|word-2` style constraints (OR semantics) from the first entity's words; the service filters candidate titles by substring containment. The primary-entity word filter (below) excludes cross-country noise that OR matching admits.
+- **Entity stopword filtering:** verbs/function words ("maintains", "is", "said", 是, 当选…) are stripped from entity-derived constraint and primary-filter words so predicates never shape retrieval.
+- **Service leniency:** if a constrain filter eliminates every semantic hit (suspect LLM entity pollution), the service returns unconstrained top results flagged `unconstrained: true` — strictly better than empty evidence.
+- **Title-mode exact lookups:** entity titles hit an exact SQL lookup first (no embedding), falling back to semantic search only on miss.
+- **Fallback chain:** local service first; Wikimedia API only if the service is unreachable.
+
+**Current architecture (V6):**
+1. Extract search queries + entity article titles (1 LLM call per slot; prompt hardened for noun-phrase-only entities)
+2. Search local service: constrained text search (intitle OR) + unconstrained supplement (primary-entity-word gated) + title-mode exact lookups
+3. Merge + deduplicate search results; post-filter titles/snippets by primary entity word (only when ≥3 survivors, to stay non-aggressive)
 4. Fetch FULL article text for all candidates (12,000 chars per article)
-5. Split into paragraphs, score relevance with minimum overlap threshold
-6. Entity-matched paragraphs get 1.5x score boost
+5. Split into paragraphs, score relevance with minimum overlap threshold (2 word tokens / 3 CJK bigrams)
+6. Constrained (intitle-gated) results get 1.3x boost; entity-matched paragraphs get 1.5x
 7. Feed top 3 paragraphs + fact to judge model for verification
 
 **Design decisions:**

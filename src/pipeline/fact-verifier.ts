@@ -11,6 +11,42 @@ function cacheKey(query: string, language: 'en' | 'zh', mode: 'text' | 'title'):
   return `${language}:${mode}:${query}`;
 }
 
+/**
+ * Function words + common verbs that must never shape entity-derived intitle
+ * constraints or the primary-entity filter. The entity-extraction LLM
+ * occasionally returns predicates glued onto article titles ("Lai Ching-te
+ * maintains"). A stopword like "maintains" pollutes intitle:lai|ching|maintains
+ * (matches junk titles) and the primary filter (excludes the real article,
+ * e.g. "2024 Taiwanese general election", whose title lacks the person's name).
+ */
+const ENTITY_STOPWORDS = new Set([
+  // English function words
+  'the', 'a', 'an', 'of', 'to', 'in', 'for', 'on', 'with', 'by', 'from', 'as',
+  'at', 'and', 'or', 'not', 'this', 'that', 'these', 'those', 'it', 'its',
+  'his', 'her', 'their', 'them', 'they', 'he', 'she', 'we', 'you', 'our',
+  // English copulas / auxiliaries
+  'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had',
+  'do', 'does', 'did', 'will', 'would', 'can', 'could', 'shall', 'should',
+  'may', 'might', 'must',
+  // Verbs that leak from fact predicates
+  'maintain', 'maintains', 'maintained', 'said', 'says', 'say', 'state',
+  'states', 'stated', 'claim', 'claims', 'claimed', 'argue', 'argues',
+  'argued', 'won', 'win', 'wins', 'elected', 'became', 'become', 'becomes',
+  'according', 'also', 'but', 'however', 'under', 'over', 'about', 'during',
+  'after', 'before', 'between', 'while', 'through', 'against', 'into', 'upon',
+  // Chinese function words / predicate particles (whole-token match)
+  '的', '是', '在', '了', '和', '与', '及', '也', '但', '而', '为', '被', '对',
+  '从', '中', '上', '下', '有', '会', '将', '曾', '已', '该', '此', '这', '那',
+  '等', '以及', '现任', '表示', '指出', '认为', '称', '说', '强调', '宣布',
+  '当选', '成为', '赢得', '主张', '担任', '主持', '领导',
+]);
+
+/** Strip stopwords from a word list (used for entity-derived constraint words). */
+function filterEntityWords(words: string[]): string[] {
+  return words.filter(w => !ENTITY_STOPWORDS.has(w));
+}
+
+/** Strip an intitle: constraint into title keywords, returning the clean query */
 /** Strip an intitle: constraint into title keywords, returning the clean query */
 function splitIntitleConstraint(query: string): { constrain: string[]; query: string } {
   const m = query.match(/\bintitle:([^\s]+)/);
@@ -679,6 +715,8 @@ export class FactVerifier {
 1. A short search query for ${langHint} — 3-5 keywords max, as if you were typing into Wikipedia's search box. Strip filler words. Focus on the core subject, not every detail. Example: "QR code mobile payments China" not "China leaped over credit card era to adopt QR code based mobile payments"
 2. 1-2 exact Wikipedia article titles most likely to contain evidence about this fact. These should be real article names, not made-up titles. Example: "Mobile payments in China" not "Chinese QR code leapfrogging"
 
+CRITICAL — entities MUST be noun phrases only: exact article titles, never sentences or verb phrases. Do NOT include predicates or trailing descriptions. For the fact "Lai Ching-te maintains Taiwan's missile defense", entities must be ["Lai Ching-te"] — NOT ["Lai Ching-te maintains"] and NOT ["Lai Ching-te maintains Taiwan's missile defense"]. For the fact "Japan and South Korea held a summit in 2023", entities could be ["2023 Japan–South Korea summit"] — the event article title if one exists.
+
 Return ONLY a JSON object mapping fact IDs:
 {"fact-1": {"query": "short keywords here", "entities": ["Exact Article Title"]}, ...}
 
@@ -817,8 +855,8 @@ ${factsJson}`;
         // filter below to exclude cross-country noise like 'Chile-United States
         // relations' when 'united' matches but 'taiwan' doesn't.
         let intitleConstraint = '';
-        const firstEntityWords = (info.entities[0] || '')
-          .toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2);
+        const firstEntityWords = filterEntityWords((info.entities[0] || '')
+          .toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2));
         if (firstEntityWords.length > 0) {
           intitleConstraint = `intitle:${firstEntityWords.join('|')}`;
         } else {
@@ -846,8 +884,8 @@ ${factsJson}`;
         // Used by both the unconstrained supplement filter AND the post-merge
         // filter that catches constrained-results noise like "Chile-United States
         // relations" admitted by OR intitle matching on generic words.
-        const primaryFilter = (info.entities[0] || info.query)
-          .toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2)[0]?.toLowerCase() || '';
+        const primaryFilter = filterEntityWords((info.entities[0] || info.query)
+          .toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2))[0]?.toLowerCase() || '';
 
         // Supplement with unconstrained results, but ONLY those where the
         // title contains the primary entity word.
