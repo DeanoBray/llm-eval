@@ -41,7 +41,7 @@ export function defaultConfig(): LLMConfig {
 
   // Judge model: used for fact extraction and fact verification
   // Uses the larger 35B Qwen variant for better multilingual factual analysis
-  const judgeModel = process.env.JUDGE_MODEL || 'Qwen3.6-35B-A3B-Uncensored-Heretic-MLX-8bit';
+  const judgeModel = process.env.JUDGE_MODEL || 'Qwen3.6-35B-A3B-uncensored-heretic-oQ8-fp16-mtp';
 
   const judgeBackend: LLMBackendConfig = {
     name: 'judge',
