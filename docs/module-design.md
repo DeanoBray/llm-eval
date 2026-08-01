@@ -148,6 +148,9 @@ Three changes address the V4 failures:
 - Some facts are inherently unverifiable through Wikipedia. Comparative/editorial claims ("China created a cashless society more integrated than those in the U.S. or Europe") aren't stated directly in any Wikipedia article.
 - The judge model can still make errors when evidence is tangential.
 - Entity extraction quality depends on the LLM's knowledge of Wikipedia article titles. The LLM occasionally returns predicates glued onto titles ("Lai Ching-te maintains") — mitigated by prompt hardening, entity stopword filtering, and service leniency (below).
+- **Judge-model CoT truncation:** the judge emits verbose chain-of-thought before the JSON; extraction runs on a 2048-token budget with an output-only instruction (was 512 — truncated responses silently fell back to entity-less search, which for zh produced whole-sentence constraint tokens → leniency junk).
+- **Ambiguous acronyms / generic entity words:** "DPP" matches US "Democratic Party" primaries; "TPP" collides with "Trans-Pacific Partnership". OR-intitle + primary-word filtering admits cross-country noise when the entity word is generic. Not yet solved — candidate: entity-type disambiguation or multi-word primary filters.
+- **ZH short-query retrieval** is the weakest link: bge-small-zh (24M) can't reliably surface 赖清德-type articles for long entity queries, so constrained text-search often yields zero → leniency fallback junk. Title-mode exact lookups still work. Upgrade path: re-index zh with bge-m3 (1024-dim).
 
 #### V6: Local semantic retrieval (LanceDB + bge embeddings)
 

@@ -720,11 +720,16 @@ CRITICAL — entities MUST be noun phrases only: exact article titles, never sen
 Return ONLY a JSON object mapping fact IDs:
 {"fact-1": {"query": "short keywords here", "entities": ["Exact Article Title"]}, ...}
 
+Output ONLY the JSON object — no reasoning, no preamble, no markdown. The response must contain nothing but the JSON.
+
 Facts:
 ${factsJson}`;
 
     try {
-      const result = await this.llm.query('judge', prompt, 512);
+      // 2048 budget: the judge model emits verbose chain-of-thought before the
+      // JSON. A 512 cap truncated responses mid-thought → JSON.parse failed →
+      // silent entity-less fallback → whole-sentence zh constraints → junk.
+      const result = await this.llm.query('judge', prompt, 2048);
       // Try multiple extraction strategies — LLMs sometimes wrap JSON in fences
       // or include trailing commas that strict JSON.parse rejects.
       let parsed: any = null;
@@ -753,6 +758,10 @@ ${factsJson}`;
         if (match) {
           try { parsed = JSON.parse(match[0]); } catch {}
         }
+      }
+
+      if (!parsed) {
+        console.warn(`[verifier] Query extraction JSON parse failed (${language}, ${facts.length} facts, response ${result.length} chars) — using raw-fact fallback`);
       }
 
       if (parsed && typeof parsed === 'object') {
@@ -860,7 +869,14 @@ ${factsJson}`;
         if (firstEntityWords.length > 0) {
           intitleConstraint = `intitle:${firstEntityWords.join('|')}`;
         } else {
-          const queryWords = info.query.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2).slice(0, 3);
+          const rawQueryWords = filterEntityWords(info.query.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2));
+          // CJK text has no spaces — a naive split yields one whole-sentence
+          // token (e.g. "赖清德在2024年台湾地区领导人选举中获胜") that can never
+          // match a title substring. Skip the constraint entirely rather than
+          // forcing the service leniency fallback to junk for every zh fact.
+          const queryWords = language === 'zh'
+            ? rawQueryWords.filter(w => w.length <= 12)
+            : rawQueryWords.slice(0, 3);
           if (queryWords.length > 0) {
             intitleConstraint = `intitle:${queryWords.join('|')}`;
           }
