@@ -60,3 +60,17 @@ docker compose up -d
 ```
 
 The `data/` directory is volume-mounted to persist job state across restarts.
+
+## Testing
+
+```bash
+npm test
+```
+
+Runs the end-to-end suite with [Playwright](https://playwright.dev/). The config
+starts the server automatically, so no manual setup is needed.
+
+**File naming convention:** end-to-end tests live in `tests/` with the `.e2e.ts`
+suffix (e.g. `tests/job-queue.e2e.ts`). The `.spec.ts` suffix is used by vitest
+in other repositories — keeping e2e tests on `.e2e.ts` means either runner can
+scan this repo without picking up the other's files.
