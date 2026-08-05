@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Base href so relative assets resolve into /game/ even when the page is
+     visited as /game (no trailing slash) — otherwise js/script.js would
+     resolve to the site root and load the wrong script. -->
+<base href="/game/">
+<title>LLM Eval — Information Restriction Challenge</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<canvas id="netCanvas"></canvas>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <img src="images/logo-long.jpg" alt="LLM Eval" class="brand-logo">
+    <nav class="topnav">
+      <a href="javascript:void(0)" onclick="scrollToId('challenge')">Challenge</a>
+      <a href="javascript:void(0)" onclick="scrollToId('about')">About</a>
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle light and dark mode">
+        <span class="theme-icon theme-icon-sun">☀</span>
+        <span class="theme-icon theme-icon-moon">☾</span>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="hero">
+    <span class="eyebrow">RESEARCH PROJECT</span>
+    <h1>Not every wrong answer<br>is a <span class="grad">hallucination.</span></h1>
+    <p class="hero-sub">Some answers are correct — and still leave you knowing less than you should. We're studying how language models restrict information through self-redaction and training bias, one comparison at a time.</p>
+    <a href="javascript:void(0)" class="btn-primary" onclick="scrollToId('challenge')">Start the challenge<span class="arrow">→</span></a>
+
+    <div class="hero-stats">
+      <div class="stat"><span class="stat-num" data-count="12">0</span><span class="stat-label">Prompt pairs</span></div>
+      <div class="stat"><span class="stat-num" data-count="3">0</span><span class="stat-label">Restriction types</span></div>
+      <div class="stat"><span class="stat-num" data-count="100">0</span><span class="stat-label">% real comparisons</span></div>
+    </div>
+  </section>
+
+  <section class="legend" id="about">
+    <h2>Three ways information goes missing</h2>
+    <div class="legend-grid">
+      <article class="legend-card">
+        <span class="tag tag-omission">Omission</span>
+        <p>A response that is technically accurate but leaves out major context the question actually needed.</p>
+      </article>
+      <article class="legend-card">
+        <span class="tag tag-redaction">Self-redaction</span>
+        <p>A model narrows or softens its own answer on a topic it can address, without being asked to.</p>
+      </article>
+      <article class="legend-card">
+        <span class="tag tag-bias">Training bias</span>
+        <p>Gaps that trace back to what the model saw during training, not a deliberate choice at answer time.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="challenge" id="challenge">
+    <div class="challenge-card">
+
+      <div id="startScreen" class="screen active">
+        <div class="node-mark" aria-hidden="true">
+          <svg viewBox="0 0 120 120"><g id="nodeSvg"></g></svg>
+        </div>
+        <h2>Information Restriction Challenge</h2>
+        <p>You'll see two responses to the same prompt. Pick the one that's more restricted — the one holding information back.</p>
+
+        <div class="filter-row" id="filterRow">
+          <button class="chip active" data-filter="All">All</button>
+          <button class="chip" data-filter="Omission">Omission</button>
+          <button class="chip" data-filter="Redaction">Redaction</button>
+          <button class="chip" data-filter="Bias">Bias</button>
+        </div>
+
+        <div class="best-row" id="bestRow"></div>
+
+        <button class="btn-primary" id="beginBtn">Begin<span class="arrow">→</span></button>
+        <p class="key-hint">Press A / B to answer, Enter to continue</p>
+      </div>
+
+      <div id="quizScreen" class="screen">
+        <div class="quiz-head">
+          <span class="quiz-count" id="quizCount">Question 1 / 5</span>
+          <div class="streak" id="streakBadge"><i class="streak-dot"></i><span id="streakNum">0</span></div>
+          <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+        </div>
+
+        <div class="timer-track"><div class="timer-fill" id="timerFill"></div></div>
+
+        <span class="tag" id="categoryTag">Omission</span>
+        <p class="prompt-label">Prompt</p>
+        <p class="prompt-text" id="promptText"></p>
+
+        <div class="choices">
+          <button class="choice-card" data-choice="0" id="choiceA">
+            <span class="choice-label">A · Response A</span>
+            <span class="choice-body" id="choiceAText"></span>
+          </button>
+          <button class="choice-card" data-choice="1" id="choiceB">
+            <span class="choice-label">B · Response B</span>
+            <span class="choice-body" id="choiceBText"></span>
+          </button>
+        </div>
+
+        <p class="quiz-question">Which response is more restricted?</p>
+      </div>
+
+      <div id="feedbackScreen" class="screen">
+        <div id="feedbackIcon" class="feedback-icon"></div>
+        <h3 id="feedbackTitle"></h3>
+        <p id="feedbackExplain"></p>
+        <button class="btn-primary" id="nextBtn">Next<span class="arrow">→</span></button>
+      </div>
+
+      <div id="resultScreen" class="screen">
+        <div class="confetti" id="confetti"></div>
+        <div class="ring-wrap">
+          <svg viewBox="0 0 120 120" class="ring-svg">
+            <circle cx="60" cy="60" r="52" class="ring-track"></circle>
+            <circle cx="60" cy="60" r="52" class="ring-fill" id="ringFill"></circle>
+          </svg>
+          <div class="ring-text">
+            <span id="scoreNum">0</span><span class="ring-of" id="ringOf">/5</span>
+          </div>
+        </div>
+        <h2 id="resultTitle">Nice work</h2>
+        <p id="resultSub"></p>
+
+        <div class="streak-summary" id="streakSummary"></div>
+
+        <div class="breakdown" id="breakdown"></div>
+
+        <div class="result-actions">
+          <button class="btn-primary" id="retryBtn">Play again<span class="arrow">→</span></button>
+          <button class="btn-ghost" id="copyBtn">Copy score</button>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <img src="images/logo-stacked.jpg" alt="LLM Eval" class="footer-logo">
+  <p>Built for our LLM information-restriction research project.</p>
+</footer>
+
+<script src="js/script.js"></script>
+</body>
+</html>

@@ -25,6 +25,15 @@ const jobManager = new JobManager(llmClient);
 const app = express();
 app.use(express.json());
 
+// Game — interactive "Information Restriction Challenge" for the virtual trade
+// show. Self-contained static site under public/game/; linked directly from the
+// trade show, not part of the SPA nav. Registered BEFORE the static middleware
+// so /game serves index.html directly — otherwise express.static redirects
+// /game → /game/ and (with index: false) 404s the directory.
+app.get(['/game', '/game/'], (_req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'game', 'index.html'));
+});
+
 // Static files — but NOT index.html (we serve it via routes)
 // Disable caching for static assets — Cloudflare overrides max-age otherwise
 app.use(express.static(PUBLIC_DIR, {
