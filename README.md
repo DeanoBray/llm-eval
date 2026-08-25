@@ -4,6 +4,21 @@ Cross-cultural bias evaluation pipeline for LLMs. Runs structured scenarios thro
 multiple model/language slots, extracts factual claims, verifies them against a judge
 model, and scores bias in responses.
 
+## Two pipelines
+
+This repo has **two** evaluation pipelines:
+
+1. **Interactive demo (Node/TS, `src/`)** — the V0→V6 bias evaluator web app.
+   This is what the `# How It Works` below describes. Single input, live progress.
+2. **File-based batch pipeline (Python, `scripts/` + `data/`)** — the Sprint 3
+   production run that produces the 1,200-output dataset. Each stage is a
+   standalone file-in/file-out script; see
+   [`docs/data-script-structure.md`](docs/data-script-structure.md).
+
+> The file-based pipeline is what we're using for the real evaluation dataset.
+> To reach the local models on Mímir during development, see
+> [`docs/ssh-to-mimir.md`](docs/ssh-to-mimir.md).
+
 ## How It Works
 
 1. **Scenario**: An English premise with a Chinese translation (e.g., a Taiwan-related
@@ -40,7 +55,7 @@ Configured via environment variables (see `.env`):
 
 | Endpoint | Description |
 |---|---|
-| `GET /api/queue` | Queue status + recent jobs |
+| `GET /api/jobs` | Queue status + recent jobs |
 | `POST /api/jobs` | Create a new job (`{ "english": "...", "chinese": "..." }`) |
 | `GET /api/jobs/:id` | Job detail + SSE for streaming progress |
 | `GET /` | Web UI (SPA) |
