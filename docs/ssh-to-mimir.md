@@ -56,24 +56,23 @@ Quick check that you can log in (your key must already be added):
 ssh -p 2122 llm-eval@lex.scomatic.com
 ```
 
-Mímir's oMLX gateway is reachable on Mímir at `127.0.0.1:21435` (the live
-gateway the project uses; `127.0.0.1:21434` is Mímir's own/failover oMLX).
+Mímir's oMLX gateway is reachable on Mímir at `127.0.0.1:21434`.
 Tunnel it to a local port on your machine (use 21434 locally for convenience,
 or pick any free local port):
 
 ```bash
-ssh -N -L 21434:127.0.0.1:21435 llm-eval@lex.scomatic.com -p 2122
+ssh -N -L 21434:127.0.0.1:21434 llm-eval@lex.scomatic.com -p 2122
 ```
 
 - `-N` — don't run a remote command (tunnel only)
-- `-L 21434:127.0.0.1:21435` — forward local `localhost:21434` → Mímir `127.0.0.1:21435`
+- `-L 21434:127.0.0.1:21434` — forward local `localhost:21434` → Mímir `127.0.0.1:21434`
 - `-p 2122` — use the external SSH port on `lex.scomatic.com`
 - Keep this terminal open while you're working; Ctrl-C closes the tunnel.
 
 Leave it running in the background if you prefer:
 
 ```bash
-ssh -f -N -L 21434:127.0.0.1:21435 llm-eval@lex.scomatic.com -p 2122
+ssh -f -N -L 21434:127.0.0.1:21434 llm-eval@lex.scomatic.com -p 2122
 ```
 
 ## Step 4 — Point your script at the tunnel
@@ -98,4 +97,4 @@ OMLX_URL=http://localhost:21434
 | `Permission denied (publickey)` | Your public key isn't on the `llm-eval` account yet. Re-check Step 2, or ask Scott to add your key. |
 | `Connection closed by ... port 22` (with a valid key) | The `llm-eval` account isn't in the `com.apple.access_ssh` group. Flag it to Scott/lex. |
 | `Connection refused` on 21434 | The tunnel isn't up, or oMLX isn't running. Confirm the `ssh` terminal is still open. |
-| Port 21434 already in use locally | Use a different local port, e.g. `-L 21435:127.0.0.1:21435`, and set `OMLX_URL=http://localhost:21435`. |
+| Port 21434 already in use locally | Use a different local port, e.g. `-L 21435:127.0.0.1:21434`, and set `OMLX_URL=http://localhost:21435`. |
