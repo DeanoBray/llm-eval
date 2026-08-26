@@ -7,7 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import type { Scenario, SlotResult } from '../pipeline/types';
 
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', '..', 'data');
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', '..', 'demo', 'data');
 
 export interface StoredJob {
   id: string;

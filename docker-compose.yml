@@ -4,7 +4,7 @@ services:
     container_name: llm-eval
     network_mode: host
     volumes:
-      - llm-eval-data:/app/data
+      - llm-eval-data:/app/demo/data
     env_file:
       - .env
     restart: unless-stopped

@@ -28,7 +28,7 @@
 
 ```
 llm-eval/
-├── data/                      # all pipeline data (gitignored; regenerable)
+├── data/                      # Sprint 3 file-based pipeline data (gitignored; regenerable)
 │   ├── scenarios.json         # 60 scenarios (input; LLMEV-113)
 │   ├── raw/                   # raw model responses (LLMEV-100/101)
 │   │   ├── us.en.jsonl        # US model (Sonnet 5, Anthropic direct) — ONCE
@@ -50,12 +50,14 @@ llm-eval/
 │   ├── ssh-to-mimir.md        # SSH tunnel access instructions
 │   └── data-script-structure.md # this file
 ├── src/                       # Node/TS demo pipeline (V0→V6) — UNCHANGED
-└── data/                      # (legacy Node job state — keep for demo)
+└── demo/
+    └── data/                  # legacy interactive demo's job-state JSON (j5.json…j24.json)
 ```
 
-> **Note:** the existing `data/` dir holds the Node demo's job JSON (j10.json...
-> j19.json). The file-based pipeline uses **its own subdirectories** under the
-> same `data/` (raw/, facts/, ground_truth/, scores/) so the two don't collide.
+> **Note:** `data/` holds **only** the Sprint 3 file-based pipeline's data
+> (raw/, facts/, ground_truth/, scores/). The legacy Node/TS interactive demo's
+> job-state JSON lives in **`demo/data/`** (it writes there via `DATA_DIR`), so
+> the two pipelines no longer share a directory.
 
 ## The 1,200-Prompt Matrix
 
