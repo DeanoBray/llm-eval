@@ -3,3 +3,4 @@ local-notes.md
 node_modules/
 dist/
 data/
+config/endpoints.yaml

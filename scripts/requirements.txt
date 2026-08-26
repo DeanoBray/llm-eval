@@ -1,0 +1,4 @@
+# Batch pipeline deps (file-based eval)
+openai>=1.0
+pyyaml>=6.0
+pandas>=2.0
