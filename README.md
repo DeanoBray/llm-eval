@@ -74,7 +74,7 @@ npm start          # starts on port 3007 (configurable via PORT env var)
 docker compose up -d
 ```
 
-The `data/` directory is volume-mounted to persist job state across restarts.
+The `demo/data/` directory is volume-mounted to persist the demo's job state across restarts.
 
 ## Testing
 

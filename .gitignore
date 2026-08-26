@@ -2,5 +2,6 @@ local-notes.md
 .env
 node_modules/
 dist/
+demo/data/
 data/
 config/endpoints.yaml
