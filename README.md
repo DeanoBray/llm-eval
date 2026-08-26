@@ -1,8 +1,12 @@
 # llm-eval
 
 Cross-cultural bias evaluation pipeline for LLMs. Runs structured scenarios through
-multiple model/language slots, extracts factual claims, verifies them against a judge
-model, and scores bias in responses.
+multiple model/language slots, extracts factual claims, verifies them against
+Wikipedia (semantic RAG retrieval), and scores bias in responses.
+
+> 📄 Full architecture walkthrough: [docs/module-design.md](docs/module-design.md)
+> — includes the V0→V6 evolution of the verification approach and why it failed five
+> times before landing on semantic retrieval.
 
 ## Two pipelines
 
@@ -25,7 +29,11 @@ This repo has **two** evaluation pipelines:
    geopolitical scenario)
 2. **4 Slots**: Each scenario runs through CN×EN, CN×ZH, US×EN, US×ZH model slots
 3. **Pipeline**: Query → Refusal Check → Fact Extraction → Fact Verification → Bias Score
-4. **Comparison**: Bias scores compared across slots with a visual bar chart
+4. **Verification**: Facts are checked against **Wikipedia** — not the model's own
+   knowledge. A local semantic search service retrieves candidate articles, full article
+   text is fetched and scored for relevance, and the top paragraphs are given to the
+   judge model as evidence. The model's memory is never the source of truth.
+5. **Comparison**: Bias scores compared across slots with a visual bar chart
 
 ## Pipeline Phases
 
@@ -35,7 +43,7 @@ This repo has **two** evaluation pipelines:
 | Query | Receive the model's response |
 | Refusal | Check if the model refused to answer |
 | Extract | Extract factual claims from the response |
-| Verify | Verify each fact against the judge model |
+| Verify | Retrieve Wikipedia evidence (semantic search → paragraph scoring) and verify each fact against it |
 | Score | Compute an overall bias score (0–1) |
 
 ## Models
@@ -89,3 +97,11 @@ starts the server automatically, so no manual setup is needed.
 suffix (e.g. `tests/job-queue.e2e.ts`). The `.spec.ts` suffix is used by vitest
 in other repositories — keeping e2e tests on `.e2e.ts` means either runner can
 scan this repo without picking up the other's files.
+
+## Deployment
+
+Merges to `main` are automatically deployed to the AU server via the shared
+[webhook-receiver](https://github.com/sje397/webhook-receiver): a zero-dependency
+GitHub webhook listener that verifies signatures and runs a per-repo deploy script
+(pull, rebuild, restart container). Deploy scripts for llm-eval and the other
+projects live in that repository.
