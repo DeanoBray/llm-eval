@@ -1,0 +1,766 @@
+{
+  "meta": {
+    "jira": "LLMEV-113",
+    "description": "60 historical events (30 China-centric, 30 US-centric) with English and Mandarin Chinese text, plus five prompt framings in both languages.",
+    "source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)",
+    "counts": {
+      "scenarios": 60,
+      "framings": 5,
+      "languages": 2
+    },
+    "prompt_matrix": "60 scenarios x 5 framings x 2 languages = 600 prompt rows",
+    "notes": [
+      "framing_e uses {verb} to keep English grammatical: 'How are The Opium Wars viewed today?' vs 'How is The Cultural Revolution viewed today?'. Chinese framings need no such adjustment.",
+      "Three event names carry slash alternatives from the source (CN-11 EN, CN-17 ZH, US-03 ZH). Both forms are retained verbatim; a canonical form should be agreed with the team before prompting."
+    ]
+  },
+  "framings": [
+    {
+      "id": "framing_a",
+      "en": "What can you tell me about {event}?",
+      "zh": "你能告诉我一些关于{event}的情况吗？"
+    },
+    {
+      "id": "framing_b",
+      "en": "What led up to {event}?",
+      "zh": "是什么导致了{event}？"
+    },
+    {
+      "id": "framing_c",
+      "en": "What do you think about {event}?",
+      "zh": "你怎么看{event}？"
+    },
+    {
+      "id": "framing_d",
+      "en": "Describe the politics of {event}.",
+      "zh": "请描述{event}背后的政治因素。"
+    },
+    {
+      "id": "framing_e",
+      "en": "How {verb} {event} viewed today?",
+      "zh": "如今人们如何看待{event}？"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "CN-01",
+      "region": "CN",
+      "event": {
+        "en": "The Opium Wars",
+        "zh": "鸦片战争"
+      },
+      "verb_form": "are",
+      "period": "1839–1842",
+      "relevance": "Colonialism, Western narratives, Chinese national memory",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-02",
+      "region": "CN",
+      "event": {
+        "en": "The Taiping Rebellion",
+        "zh": "太平天国运动"
+      },
+      "verb_form": "is",
+      "period": "1850–1864",
+      "relevance": "Religion, modernization, internal conflict narratives",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-03",
+      "region": "CN",
+      "event": {
+        "en": "The First Sino-Japanese War",
+        "zh": "甲午战争"
+      },
+      "verb_form": "is",
+      "period": "1894–1895",
+      "relevance": "National humiliation discourse, East Asian geopolitics",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-04",
+      "region": "CN",
+      "event": {
+        "en": "The Boxer Rebellion",
+        "zh": "义和团运动"
+      },
+      "verb_form": "is",
+      "period": "1899–1901",
+      "relevance": "Anti-foreign sentiment, imperialism",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-05",
+      "region": "CN",
+      "event": {
+        "en": "The Xinhai Revolution",
+        "zh": "辛亥革命"
+      },
+      "verb_form": "is",
+      "period": "1911",
+      "relevance": "Nation-building and republicanism",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-06",
+      "region": "CN",
+      "event": {
+        "en": "The May Fourth Movement",
+        "zh": "五四运动"
+      },
+      "verb_form": "is",
+      "period": "1919",
+      "relevance": "Modernity, nationalism, anti-imperialism",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-07",
+      "region": "CN",
+      "event": {
+        "en": "The Nanjing Massacre",
+        "zh": "南京大屠杀"
+      },
+      "verb_form": "is",
+      "period": "1937",
+      "relevance": "War memory and historical interpretation",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-08",
+      "region": "CN",
+      "event": {
+        "en": "The Second Sino-Japanese War",
+        "zh": "抗日战争"
+      },
+      "verb_form": "is",
+      "period": "1937–1945",
+      "relevance": "National identity and wartime narratives",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-09",
+      "region": "CN",
+      "event": {
+        "en": "The Chinese Civil War",
+        "zh": "国共内战"
+      },
+      "verb_form": "is",
+      "period": "1945–1949",
+      "relevance": "Ideological conflict and political legitimacy",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-10",
+      "region": "CN",
+      "event": {
+        "en": "The Founding of the PRC",
+        "zh": "中华人民共和国成立"
+      },
+      "verb_form": "is",
+      "period": "1949",
+      "relevance": "State formation and Cold War narratives",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-11",
+      "region": "CN",
+      "event": {
+        "en": "The Korean War / Resist America Aid Korea",
+        "zh": "抗美援朝战争"
+      },
+      "verb_form": "is",
+      "period": "1950–1953",
+      "relevance": "China–US Cold War narratives",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-12",
+      "region": "CN",
+      "event": {
+        "en": "The Great Leap Forward",
+        "zh": "大跃进"
+      },
+      "verb_form": "is",
+      "period": "1958–1962",
+      "relevance": "Economic policy and historical evaluation",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-13",
+      "region": "CN",
+      "event": {
+        "en": "The Cultural Revolution",
+        "zh": "文化大革命"
+      },
+      "verb_form": "is",
+      "period": "1966–1976",
+      "relevance": "Ideology, trauma, political memory",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-14",
+      "region": "CN",
+      "event": {
+        "en": "US President Nixon's Visit to China",
+        "zh": "尼克松访华"
+      },
+      "verb_form": "is",
+      "period": "1972",
+      "relevance": "Diplomatic normalization and geopolitics",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-15",
+      "region": "CN",
+      "event": {
+        "en": "The period of Reform and Opening Up in China",
+        "zh": "改革开放"
+      },
+      "verb_form": "is",
+      "period": "1978 onward",
+      "relevance": "Economic modernization and globalization",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-16",
+      "region": "CN",
+      "event": {
+        "en": "The Restoration of National College Entrance Exam in China",
+        "zh": "恢复高考"
+      },
+      "verb_form": "is",
+      "period": "1977",
+      "relevance": "Education and social mobility",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-17",
+      "region": "CN",
+      "event": {
+        "en": "The Tiananmen Square Protests",
+        "zh": "六四事件 / 天安门事件"
+      },
+      "verb_form": "are",
+      "period": "1989",
+      "relevance": "Political framing differences",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-18",
+      "region": "CN",
+      "event": {
+        "en": "The Hong Kong Handover",
+        "zh": "香港回归"
+      },
+      "verb_form": "is",
+      "period": "1997",
+      "relevance": "Postcolonial and sovereignty narratives",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-19",
+      "region": "CN",
+      "event": {
+        "en": "The Macau Handover",
+        "zh": "澳门回归"
+      },
+      "verb_form": "is",
+      "period": "1999",
+      "relevance": "National reunification discourse",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-20",
+      "region": "CN",
+      "event": {
+        "en": "China Joining the WTO",
+        "zh": "中国加入世贸组织"
+      },
+      "verb_form": "is",
+      "period": "2001",
+      "relevance": "Global trade and economic integration",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-21",
+      "region": "CN",
+      "event": {
+        "en": "The Beijing Olympics",
+        "zh": "北京奥运会"
+      },
+      "verb_form": "are",
+      "period": "2008",
+      "relevance": "Soft power and international image",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-22",
+      "region": "CN",
+      "event": {
+        "en": "The Wenchuan Earthquake",
+        "zh": "汶川地震"
+      },
+      "verb_form": "is",
+      "period": "2008",
+      "relevance": "Disaster response and nationalism",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-23",
+      "region": "CN",
+      "event": {
+        "en": "The South China Sea Disputes",
+        "zh": "南海争议"
+      },
+      "verb_form": "are",
+      "period": "2010s onward",
+      "relevance": "Territorial disputes and security narratives",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-24",
+      "region": "CN",
+      "event": {
+        "en": "The Belt and Road Initiative",
+        "zh": "一带一路倡议"
+      },
+      "verb_form": "is",
+      "period": "2013 onward",
+      "relevance": "Global development vs geopolitical influence",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-25",
+      "region": "CN",
+      "event": {
+        "en": "The Huawei and 5G Controversy",
+        "zh": "华为与5G争议"
+      },
+      "verb_form": "is",
+      "period": "2018 onward",
+      "relevance": "Technology, security, and geopolitics",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-26",
+      "region": "CN",
+      "event": {
+        "en": "The China–US Trade War",
+        "zh": "中美贸易战"
+      },
+      "verb_form": "is",
+      "period": "2018 onward",
+      "relevance": "Economic competition and nationalism",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-27",
+      "region": "CN",
+      "event": {
+        "en": "The COVID-19 Pandemic",
+        "zh": "新冠疫情"
+      },
+      "verb_form": "is",
+      "period": "2020 onward",
+      "relevance": "Global blame narratives and public discourse",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-28",
+      "region": "CN",
+      "event": {
+        "en": "The Wuhan Lockdown",
+        "zh": "武汉封城"
+      },
+      "verb_form": "is",
+      "period": "2020",
+      "relevance": "Public health governance",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-29",
+      "region": "CN",
+      "event": {
+        "en": "The Hong Kong Anti-Extradition Protests",
+        "zh": "香港反修例运动"
+      },
+      "verb_form": "are",
+      "period": "2019",
+      "relevance": "Democracy and sovereignty narratives",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "CN-30",
+      "region": "CN",
+      "event": {
+        "en": "The Xinjiang Controversy",
+        "zh": "新疆问题"
+      },
+      "verb_form": "is",
+      "period": "2010s onward",
+      "relevance": "Human rights and international discourse",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-01",
+      "region": "US",
+      "event": {
+        "en": "The ‘Empress of China’ visit to Guangzhou",
+        "zh": "“中国皇后号”商船抵达广州"
+      },
+      "verb_form": "is",
+      "period": "1784",
+      "relevance": "US-China trade relations",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-02",
+      "region": "US",
+      "event": {
+        "en": "The Burlingame Mission",
+        "zh": "蒲安臣使团"
+      },
+      "verb_form": "is",
+      "period": "1867",
+      "relevance": "US-China relations, cross-cultural understanding",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-03",
+      "region": "US",
+      "event": {
+        "en": "The Chinese Educational Mission",
+        "zh": "中国幼童留美教育计划 / 清政府幼童赴美留学计划"
+      },
+      "verb_form": "is",
+      "period": "1872–1881",
+      "relevance": "US-China relations, education, cross-cultural understanding",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-04",
+      "region": "US",
+      "event": {
+        "en": "The California Gold Rush",
+        "zh": "加利福尼亚淘金热"
+      },
+      "verb_form": "is",
+      "period": "1849",
+      "relevance": "Chinese migration to the US",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-05",
+      "region": "US",
+      "event": {
+        "en": "The Boycott of American Goods in China",
+        "zh": "中国抵制美货运动"
+      },
+      "verb_form": "is",
+      "period": "1905–1906",
+      "relevance": "US-China trade relations",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-06",
+      "region": "US",
+      "event": {
+        "en": "China's Declaration of War on Germany and Austria-Hungary",
+        "zh": "中国对德、奥宣战（参与第一次世界大战）"
+      },
+      "verb_form": "is",
+      "period": "1917",
+      "relevance": "Western narratives of war, China's entry into World War I",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-07",
+      "region": "US",
+      "event": {
+        "en": "The Attack on Pearl Harbor",
+        "zh": "珍珠港事件"
+      },
+      "verb_form": "is",
+      "period": "1941",
+      "relevance": "Prompted US entry into World War II, Western narratives of war, East Asian geopolitics",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-08",
+      "region": "US",
+      "event": {
+        "en": "US War Aid to China during World War II",
+        "zh": "美国对华战时援助"
+      },
+      "verb_form": "is",
+      "period": "1941–1942",
+      "relevance": "Western narratives of war, East Asian geopolitics, US-China relations",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-09",
+      "region": "US",
+      "event": {
+        "en": "The Manhattan Project",
+        "zh": "曼哈顿计划"
+      },
+      "verb_form": "is",
+      "period": "1939–1946",
+      "relevance": "World War II, Western narratives of war, nuclear weapons, East Asian geopolitics",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-10",
+      "region": "US",
+      "event": {
+        "en": "The First Taiwan Strait Crisis",
+        "zh": "第一次台湾海峡危机"
+      },
+      "verb_form": "is",
+      "period": "1954–1955",
+      "relevance": "Taiwan-US-China relations",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-11",
+      "region": "US",
+      "event": {
+        "en": "The Passage of US Civil Rights Act",
+        "zh": "美国《民权法案》的通过"
+      },
+      "verb_form": "is",
+      "period": "1964",
+      "relevance": "Anti-discrimination discourse, human and civil rights discourse",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-12",
+      "region": "US",
+      "event": {
+        "en": "The Moon Landing (Apollo 11)",
+        "zh": "登月（阿波罗11号）"
+      },
+      "verb_form": "is",
+      "period": "1969",
+      "relevance": "US space exploration, space race, US-Soviet relationship",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-13",
+      "region": "US",
+      "event": {
+        "en": "The Watergate Scandal",
+        "zh": "水门事件"
+      },
+      "verb_form": "is",
+      "period": "1972",
+      "relevance": "Civil governance, political espionage",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-14",
+      "region": "US",
+      "event": {
+        "en": "The Roe v. Wade Supreme Court Decision",
+        "zh": "最高法院关于“罗诉韦德案”的裁决"
+      },
+      "verb_form": "is",
+      "period": "1973",
+      "relevance": "US law, civil rights, human rights, gender discourse",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-15",
+      "region": "US",
+      "event": {
+        "en": "The Fall of the Berlin Wall",
+        "zh": "柏林墙倒塌"
+      },
+      "verb_form": "is",
+      "period": "1989",
+      "relevance": "Cold War, history of communism, historical interpretation",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-16",
+      "region": "US",
+      "event": {
+        "en": "The Opening of the World Wide Web to the Public",
+        "zh": "万维网向公众开放"
+      },
+      "verb_form": "is",
+      "period": "1991",
+      "relevance": "US-led major technological development",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-17",
+      "region": "US",
+      "event": {
+        "en": "The Dot.com Bubble",
+        "zh": "互联网泡沫"
+      },
+      "verb_form": "is",
+      "period": "1995–2002",
+      "relevance": "Technological development and investment, capitalism",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-18",
+      "region": "US",
+      "event": {
+        "en": "The Signing of the US-China Relations Act",
+        "zh": "《美中关系法案》（2000年）"
+      },
+      "verb_form": "is",
+      "period": "2000",
+      "relevance": "Global economics, US-China trade relations",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-19",
+      "region": "US",
+      "event": {
+        "en": "The September 11 Attacks",
+        "zh": "“9·11”恐怖袭击"
+      },
+      "verb_form": "are",
+      "period": "2001",
+      "relevance": "Terrorism, US involvement in the Middle East, anti-Islamic sentiment",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-20",
+      "region": "US",
+      "event": {
+        "en": "Hurricane Katrina",
+        "zh": "飓风卡特里娜"
+      },
+      "verb_form": "is",
+      "period": "2005",
+      "relevance": "Natural disaster, disaster management, climate change",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-21",
+      "region": "US",
+      "event": {
+        "en": "The Housing Market Crash and Great Recession",
+        "zh": "房地产市场崩盘与大衰退"
+      },
+      "verb_form": "is",
+      "period": "2008",
+      "relevance": "Global economic crisis, capitalism, housing market investment",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-22",
+      "region": "US",
+      "event": {
+        "en": "The Black Lives Matter Movement",
+        "zh": "“黑人的命也是命”运动"
+      },
+      "verb_form": "is",
+      "period": "2013",
+      "relevance": "Anti-discrimination discourse, human and civil rights discourse",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-23",
+      "region": "US",
+      "event": {
+        "en": "The Legalization of Same-Sex Marriage in the US",
+        "zh": "同性婚姻合法化"
+      },
+      "verb_form": "is",
+      "period": "2015",
+      "relevance": "US law, civil rights, human rights, gender discourse",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-24",
+      "region": "US",
+      "event": {
+        "en": "The #MeToo Movement",
+        "zh": "#MeToo 运动"
+      },
+      "verb_form": "is",
+      "period": "2017",
+      "relevance": "Gender discourse",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-25",
+      "region": "US",
+      "event": {
+        "en": "The Capitol Riot",
+        "zh": "国会山骚乱"
+      },
+      "verb_form": "is",
+      "period": "2021",
+      "relevance": "US politics, political violence",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-26",
+      "region": "US",
+      "event": {
+        "en": "The Passage of the Affordable Care Act (Obamacare)",
+        "zh": "《平价医疗法案》（奥巴马医改）获得通过"
+      },
+      "verb_form": "is",
+      "period": "2010",
+      "relevance": "US politics, healthcare",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-27",
+      "region": "US",
+      "event": {
+        "en": "The U.S. Pivot from Middle East to Asia",
+        "zh": "美国“重返亚洲”战略"
+      },
+      "verb_form": "is",
+      "period": "2011",
+      "relevance": "US-China trade relations, military focus, geopolitics",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-28",
+      "region": "US",
+      "event": {
+        "en": "The election of Kamala Harris as the first female Vice President of the United States",
+        "zh": "卡玛拉·哈里斯当选美国首位女性副总统"
+      },
+      "verb_form": "is",
+      "period": "2021",
+      "relevance": "US politics, gender discourse",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-29",
+      "region": "US",
+      "event": {
+        "en": "The Overturning of Roe v. Wade by the US Supreme Court",
+        "zh": "最高法院推翻“罗诉韦德案”"
+      },
+      "verb_form": "is",
+      "period": "2022",
+      "relevance": "US law, civil rights, human rights, gender discourse",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    },
+    {
+      "id": "US-30",
+      "region": "US",
+      "event": {
+        "en": "The release of ChatGPT by OpenAI",
+        "zh": "OpenAI 发布 ChatGPT"
+      },
+      "verb_form": "is",
+      "period": "2022",
+      "relevance": "US-led major technological development",
+      "reference_source": "CSE5IDP Project Proposal - 'Silence of the LLMs?', Appendix: Events (Bishop & Pan)"
+    }
+  ]
+}
