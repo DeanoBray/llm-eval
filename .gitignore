@@ -3,5 +3,6 @@ local-notes.md
 node_modules/
 dist/
 demo/data/
-data/
+data/*
+!data/scenarios.json
 config/endpoints.yaml
